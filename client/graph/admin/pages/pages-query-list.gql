@@ -8,6 +8,7 @@ query {
       description
       contentType
       isPublished
+      isSubmit
       isPrivate
       privateNS
       createdAt

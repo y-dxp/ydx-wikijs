@@ -49,22 +49,22 @@
         v-list-item(v-for='(item, idx) of parents', :key='`parent-` + item.id', @click='fetchBrowseItems(item)', style='min-height: 30px;')
           v-list-item-avatar(size='18', :style='`padding-left: ` + (idx * 8) + `px; width: auto; margin: 0 5px 0 0;`')
             v-icon(small) mdi-folder-open
-          v-list-item-title {{ item.title }}
+          v-list-item-title {{ item.title | replace(resCharacter,'')}}
         v-divider.mt-2
         v-list-item.mt-2(v-if='currentParent.pageId > 0', :href='`/` + currentParent.path', :key='`directorypage-` + currentParent.id', :input-value='path === currentParent.path')
           v-list-item-avatar(size='24')
             v-icon mdi-text-box
-          v-list-item-title {{ currentParent.title }}
+          v-list-item-title {{ currentParent.title | replace(resCharacter,'') }}
         v-subheader.pl-4 {{$t('common:sidebar.currentDirectory')}}
       template(v-for='item of currentItems')
         v-list-item(v-if='item.isFolder', :key='`childfolder-` + item.id', @click='fetchBrowseItems(item)')
           v-list-item-avatar(size='24')
             v-icon mdi-folder
-          v-list-item-title {{ item.title }}
-        v-list-item(v-else, :href='`/` + item.locale + `/` + item.path', :key='`childpage-` + item.id', :input-value='path === item.path')
+          v-list-item-title {{ item.title | replace(resCharacter,'')}}
+        v-list-item(v-else, :href='`/`  +item.path', :key='`childpage-` + item.id', :input-value='path === item.path')
           v-list-item-avatar(size='24')
             v-icon mdi-text-box
-          v-list-item-title {{ item.title }}
+          v-list-item-title {{ item.title | replace(resCharacter,'')}}
 </template>
 
 <script>
@@ -91,6 +91,10 @@ export default {
     navMode: {
       type: String,
       default: 'MIXED'
+    },
+    resCharacter: {
+      type: String,
+      default: '__'
     }
   },
   data() {
@@ -99,10 +103,16 @@ export default {
       currentItems: [],
       currentParent: {
         id: 0,
-        title: '/ (root)'
+        title: '/ (Yokogawa Cloud)'
       },
       parents: [],
       loadedCache: []
+    }
+  },
+  filters: {
+    replace: function (st, rep, repWith) {
+      const result = st.split(rep)
+      return result[result.length - 1]
     }
   },
   computed: {
@@ -141,7 +151,33 @@ export default {
       }
 
       this.currentParent = item
-
+      const profileResp = await this.$apollo.query({
+        query: gql`
+        {
+          users {
+            profile {
+              id
+              name
+              email
+              providerKey
+              providerName
+              isSystem
+              isVerified
+              location
+              jobTitle
+              timezone
+              dateFormat
+              appearance
+              createdAt
+              updatedAt
+              lastLoginAt
+              groups
+              pagesTotal
+            }
+          }
+        }
+      `
+      })
       const resp = await this.$apollo.query({
         query: gql`
           query ($parent: Int, $locale: String!) {
@@ -154,6 +190,9 @@ export default {
                 pageId
                 parent
                 locale
+                isPublished
+                isSubmit
+                creatorId
               }
             }
           }
@@ -165,7 +204,11 @@ export default {
         }
       })
       this.loadedCache = _.union(this.loadedCache, [item.id])
-      this.currentItems = _.get(resp, 'data.pages.tree', [])
+
+      const items = (_.get(resp, 'data.pages.tree', [])).filter((item) => { return item['isPublished'] === true || item['isFolder'] === true || profileResp.data.users.profile.groups.includes('Editor') || profileResp.data.users.profile.groups.includes('Administrators') || item['creatorId'] === profileResp.data.users.profile.id })
+      this.currentItems = _.filter(items, ['parent', item.id])
+      // this.currentItems = _.get(resp, 'data.pages.tree', [])
+
       this.$store.commit(`loadingStop`, 'browse-load')
     },
     async loadFromCurrentPath() {
@@ -182,6 +225,9 @@ export default {
                 pageId
                 parent
                 locale
+                isPublished
+                isSubmit
+                creatorId
               }
             }
           }
@@ -192,12 +238,44 @@ export default {
           locale: this.locale
         }
       })
-      const items = _.get(resp, 'data.pages.tree', [])
+
+      const profileResp = await this.$apollo.query({
+        query: gql`
+        {
+          users {
+            profile {
+              id
+              name
+              email
+              providerKey
+              providerName
+              isSystem
+              isVerified
+              location
+              jobTitle
+              timezone
+              dateFormat
+              appearance
+              createdAt
+              updatedAt
+              lastLoginAt
+              groups
+              pagesTotal
+            }
+          }
+        }
+      `
+      })
+      const items = (_.get(resp, 'data.pages.tree', [])).filter((item) => { return item['isPublished'] === true || item['isFolder'] === true || profileResp.data.users.profile.groups.includes('Editor') || profileResp.data.users.profile.groups.includes('Administrators') || item['creatorId'] === profileResp.data.users.profile.id })
       const curPage = _.find(items, ['pageId', this.$store.get('page/id')])
       if (!curPage) {
         console.warn('Could not find current page in page tree listing!')
         return
       }
+
+      setTimeout(() => {
+        this.$store.set('page/isSubmit', curPage.isSubmit)
+      }, 0)
 
       let curParentId = curPage.parent
       let invertedAncestors = []
@@ -216,13 +294,21 @@ export default {
       this.loadedCache = [curPage.parent]
       this.currentItems = _.filter(items, ['parent', curPage.parent])
       this.$store.commit(`loadingStop`, 'browse-load')
+
+      const currentPath = new URL(document.URL).pathname.slice(1)
+      const folderNameExist = items.filter((item) => { return item.path === currentPath })
+
+      if (folderNameExist.length > 0 && folderNameExist[0].isFolder) {
+        this.fetchBrowseItems(folderNameExist[0])
+      }
     },
     goHome () {
       window.location.assign(siteLangs.length > 0 ? `/${this.locale}/home` : '/')
     }
   },
   mounted () {
-    this.currentParent.title = `/ ${this.$t('common:sidebar.root')}`
+    // this.currentParent.title = `/ ${this.$t('common:sidebar.root')}`
+    this.currentParent.title = `/ (Yokogawa Cloud)`
     if (this.navMode === 'TREE') {
       this.currentMode = 'browse'
     } else if (this.navMode === 'STATIC') {

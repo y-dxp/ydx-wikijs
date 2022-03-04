@@ -21,7 +21,8 @@
       v-flex(xs5, md4)
         v-toolbar.nav-header-inner(color='black', dark, flat, :class='$vuetify.rtl ? `pr-3` : `pl-3`')
           v-avatar(tile, size='34', @click='goHome')
-            v-img.org-logo(:src='logoUrl')
+            //- v-img.org-logo(:src='logoUrl')
+            img(src='/_assets/svg/yokogawa-icon.png', alt='Logo', style=' cursor: pointer;width: 36px;')
           //- v-menu(open-on-hover, offset-y, bottom, left, min-width='250', transition='slide-y-transition')
           //-   template(v-slot:activator='{ on }')
           //-     v-app-bar-nav-icon.btn-animate-app(v-on='on', :class='$vuetify.rtl ? `mx-0` : ``')
@@ -136,31 +137,31 @@
                       v-icon(color='grey') mdi-file-document-edit-outline
                   span {{$t('common:header.pageActions')}}
               v-list(nav, :light='!$vuetify.theme.dark', :dark='$vuetify.theme.dark', :class='$vuetify.theme.dark ? `grey darken-4` : ``')
-                .overline.pa-4.grey--text {{$t('common:header.currentPage')}}
+                .overline.pa-4 {{$t('common:header.currentPage')}}
                 v-list-item.pl-4(@click='pageView', v-if='mode !== `view`')
                   v-list-item-avatar(size='24', tile): v-icon(color='indigo') mdi-file-document-outline
                   v-list-item-title.body-2 {{$t('common:header.view')}}
                 v-list-item.pl-4(@click='pageEdit', v-if='mode !== `edit` && hasWritePagesPermission')
                   v-list-item-avatar(size='24', tile): v-icon(color='indigo') mdi-file-document-edit-outline
                   v-list-item-title.body-2 {{$t('common:header.edit')}}
-                v-list-item.pl-4(@click='pageHistory', v-if='mode !== `history` && hasReadHistoryPermission')
+                v-list-item.pl-4(@click='pageReviewsHistory', v-if='mode !== `history` && hasReadHistoryPermission')
                   v-list-item-avatar(size='24', tile): v-icon(color='indigo') mdi-history
                   v-list-item-content
                     v-list-item-title.body-2 {{$t('common:header.history')}}
                 v-list-item.pl-4(@click='pageSource', v-if='mode !== `source` && hasReadSourcePermission')
                   v-list-item-avatar(size='24', tile): v-icon(color='indigo') mdi-code-tags
                   v-list-item-title.body-2 {{$t('common:header.viewSource')}}
-                v-list-item.pl-4(@click='pageConvert', v-if='hasWritePagesPermission')
-                  v-list-item-avatar(size='24', tile): v-icon(color='indigo') mdi-lightning-bolt
-                  v-list-item-title.body-2 {{$t('common:header.convert')}}
-                v-list-item.pl-4(@click='pageDuplicate', v-if='hasWritePagesPermission')
-                  v-list-item-avatar(size='24', tile): v-icon(color='indigo') mdi-content-duplicate
-                  v-list-item-title.body-2 {{$t('common:header.duplicate')}}
+                //- v-list-item.pl-4(@click='pageConvert', v-if='hasWritePagesPermission')
+                //-   v-list-item-avatar(size='24', tile): v-icon(color='indigo') mdi-lightning-bolt
+                //-   v-list-item-title.body-2 {{$t('common:header.convert')}}
+                //- v-list-item.pl-4(@click='pageDuplicate', v-if='hasWritePagesPermission')
+                //-   v-list-item-avatar(size='24', tile): v-icon(color='indigo') mdi-content-duplicate
+                //-   v-list-item-title.body-2 {{$t('common:header.duplicate')}}
                 v-list-item.pl-4(@click='pageMove', v-if='hasManagePagesPermission')
                   v-list-item-avatar(size='24', tile): v-icon(color='indigo') mdi-content-save-move-outline
                   v-list-item-content
                     v-list-item-title.body-2 {{$t('common:header.move')}}
-                v-list-item.pl-4(@click='pageDelete', v-if='hasDeletePagesPermission')
+                v-list-item.pl-4(@click='pageDelete', v-if='deletePagePermission')
                   v-list-item-avatar(size='24', tile): v-icon(color='red darken-2') mdi-trash-can-outline
                   v-list-item-title.body-2 {{$t('common:header.delete')}}
             v-divider(vertical)
@@ -337,10 +338,19 @@ export default {
     hasDeletePagesPermission: get('page/effectivePermissions@pages.delete'),
     hasReadSourcePermission: get('page/effectivePermissions@source.read'),
     hasReadHistoryPermission: get('page/effectivePermissions@history.read'),
+    pageCreatorId: get('page/authorId'),
+    loginUserId: get('user/id'),
+    loginUserPermissions: get('user/permissions'),
+    pageIsPublished: get('page/isPublished'),
     hasAnyPagePermissions () {
       return this.hasAdminPermission || this.hasWritePagesPermission || this.hasManagePagesPermission ||
         this.hasDeletePagesPermission || this.hasReadSourcePermission || this.hasReadHistoryPermission
+    },
+    deletePagePermission () {
+      return (this.hasDeletePagesPermission && !this.pageIsPublished) || this.loginUserPermissions.includes('manage:navigation') || this.loginUserPermissions.includes('manage:system')
+      //  return (this.hasDeletePagesPermission && !this.pageIsPublished && (this.pageCreatorId === this.loginUserId)) || this.loginUserPermissions.includes('manage:navigation') || this.loginUserPermissions.includes('manage:system')
     }
+
   },
   created () {
     if (this.hideSearch || this.dense || this.$vuetify.breakpoint.smAndDown) {
@@ -353,6 +363,9 @@ export default {
     })
     this.$root.$on('pageHistory', () => {
       this.pageHistory()
+    })
+    this.$root.$on('pageReviewsHistory', () => {
+      this.pageReviewsHistory()
     })
     this.$root.$on('pageSource', () => {
       this.pageSource()
@@ -410,6 +423,9 @@ export default {
     },
     pageHistory () {
       window.location.assign(`/h/${this.locale}/${this.path}`)
+    },
+    pageReviewsHistory () {
+      window.location.assign(`/rh/${this.locale}/${this.path}`)
     },
     pageSource () {
       window.location.assign(`/s/${this.locale}/${this.path}`)

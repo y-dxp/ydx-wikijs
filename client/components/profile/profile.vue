@@ -109,63 +109,25 @@
                       @keydown.esc='editPop.jobTitle = false'
                     )
 
-        v-card.mt-3.animated.fadeInUp.wait-p2s
-          v-toolbar(color='blue-grey', dark, dense, flat)
-            v-toolbar-title
-              .subtitle-1 {{$t('profile:auth.title')}}
-          v-card-text.pt-0
-            v-subheader.pl-0: span.subtitle-2 {{$t('profile:auth.provider')}}
-            v-toolbar(
-              flat
-              :color='$vuetify.theme.dark ? "grey darken-2" : "purple lighten-5"'
-              dense
-              :class='$vuetify.theme.dark ? "grey--text text--lighten-1" : "purple--text text--darken-4"'
-              )
-              v-icon(:color='$vuetify.theme.dark ? "grey lighten-1" : "purple darken-4"') mdi-shield-lock
-              .subheading.ml-3 {{ user.providerName }}
+        //- v-card.mt-3.animated.fadeInUp.wait-p2s
+        //-   v-toolbar(color='blue-grey', dark, dense, flat)
+        //-     v-toolbar-title
+        //-       .subtitle-1 {{$t('profile:auth.title')}}
+        //-   v-card-text.pt-0
+        //-     v-subheader.pl-0: span.subtitle-2 {{$t('profile:auth.provider')}}
+        //-     v-toolbar(
+        //-       flat
+        //-       :color='$vuetify.theme.dark ? "grey darken-2" : "purple lighten-5"'
+        //-       dense
+        //-       :class='$vuetify.theme.dark ? "grey--text text--lighten-1" : "purple--text text--darken-4"'
+        //-       )
+        //-       v-icon(:color='$vuetify.theme.dark ? "grey lighten-1" : "purple darken-4"') mdi-shield-lock
+        //-       .subheading.ml-3 {{ user.providerName }}
             //- v-divider.mt-3
             //- v-subheader.pl-0: span.subtitle-2 Two-Factor Authentication (2FA)
             //- .caption.mb-2 2FA adds an extra layer of security by requiring a unique code generated on your smartphone when signing in.
             //- v-btn(color='purple darken-4', disabled).ml-0 Enable 2FA
             //- v-btn(color='purple darken-4', dark, depressed, disabled).ml-0 Disable 2FA
-            template(v-if='user.providerKey === `local`')
-              v-divider.mt-3
-              v-subheader.pl-0: span.subtitle-2 {{$t('profile:auth.changePassword')}}
-              v-text-field(
-                ref='iptCurrentPass'
-                v-model='currentPass'
-                outlined
-                :label='$t(`profile:auth.currentPassword`)'
-                type='password'
-                prepend-inner-icon='mdi-form-textbox-password'
-                )
-              v-text-field(
-                ref='iptNewPass'
-                v-model='newPass'
-                outlined
-                :label='$t(`profile:auth.newPassword`)'
-                type='password'
-                prepend-inner-icon='mdi-form-textbox-password'
-                autocomplete='off'
-                counter='255'
-                loading
-                )
-                password-strength(slot='progress', v-model='newPass')
-              v-text-field(
-                ref='iptVerifyPass'
-                v-model='verifyPass'
-                outlined
-                :label='$t(`profile:auth.verifyPassword`)'
-                type='password'
-                prepend-inner-icon='mdi-form-textbox-password'
-                autocomplete='off'
-                hide-details
-                )
-          v-card-chin(v-if='user.providerKey === `local`')
-            v-spacer
-            v-btn.px-4(color='purple darken-4', dark, depressed, @click='changePassword', :loading='changePassLoading')
-              v-icon(left) mdi-progress-check
-              span {{$t('profile:auth.changePassword')}}
       v-flex(lg6 xs12)
         //- v-card
         //-   v-toolbar(color='blue-grey', dark, dense, flat)
@@ -655,8 +617,8 @@ export default {
     appearances () {
       return [
         { text: this.$t('profile:appearanceDefault'), value: '' },
-        { text: this.$t('profile:appearanceLight'), value: 'light' },
-        { text: this.$t('profile:appearanceDark'), value: 'dark' }
+        { text: this.$t('profile:appearanceLight'), value: 'light' }
+        // { text: this.$t('profile:appearanceDark'), value: 'dark' }
       ]
     },
     currentAppearance () {
@@ -683,14 +645,14 @@ export default {
     }
   },
   watch: {
-    'user.appearance': (newValue, oldValue) => {
+    'user.appearance': function(newValue, oldValue) {
       if (newValue === '') {
         WIKI.$vuetify.theme.dark = siteConfig.darkMode
       } else {
         WIKI.$vuetify.theme.dark = (newValue === 'dark')
       }
     },
-    'user.dateFormat': (newValue, oldValue) => {
+    'user.dateFormat': function(newValue, oldValue) {
       if (newValue === '') {
         WIKI.$moment.updateLocale(WIKI.$moment.locale(), null)
       } else {
@@ -701,7 +663,7 @@ export default {
         })
       }
     },
-    'user.timezone': (newValue, oldValue) => {
+    'user.timezone': function(newValue, oldValue) {
       if (newValue === '') {
         WIKI.$moment.tz.setDefault()
       } else {

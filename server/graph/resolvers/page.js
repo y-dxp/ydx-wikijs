@@ -30,6 +30,16 @@ module.exports = {
       }
     },
     /**
+     * PAGE reviewHistory
+     */
+    async reviewHistory(obj, args, context, info) {
+      return WIKI.models.pageHistory.getReviewHistory({
+        offsetPage: args.offsetPage || 0,
+        offsetSize: args.offsetSize || 100
+      })
+    },
+
+    /**
      * PAGE VERSION
      */
     async version(obj, args, context, info) {
@@ -85,7 +95,8 @@ module.exports = {
         'privateNS',
         'contentType',
         'createdAt',
-        'updatedAt'
+        'updatedAt',
+        'isSubmit'
       ])
         .withGraphJoined('tags')
         .modifyGraph('tags', builder => {
@@ -152,7 +163,7 @@ module.exports = {
     async single (obj, args, context, info) {
       let page = await WIKI.models.pages.getPageFromDb(args.id)
       if (page) {
-        if (WIKI.auth.checkAccess(context.req.user, ['manage:pages', 'delete:pages'], {
+        if (WIKI.auth.checkAccess(context.req.user, ['write:pages', 'manage:pages', 'delete:pages'], {
           path: page.path,
           locale: page.localeCode
         })) {
@@ -392,6 +403,42 @@ module.exports = {
         })
         return {
           responseResult: graphHelper.generateSuccess('Page has been updated.'),
+          page
+        }
+      } catch (err) {
+        return graphHelper.generateError(err)
+      }
+    },
+
+    /**
+     * Update History PAGE
+     */
+    async updateHistory(obj, args, context) {
+      try {
+        const page = await WIKI.models.pages.updateHistory({
+          ...args,
+          user: context.req.user
+        })
+        return {
+          responseResult: graphHelper.generateSuccess('History has been updated.'),
+          page
+        }
+      } catch (err) {
+        return graphHelper.generateError(err)
+      }
+    },
+
+    /**
+     * Update History PAGE
+     */
+    async updateHistoryByReviewer(obj, args, context) {
+      try {
+        const page = await WIKI.models.pages.updateHistoryByReviewer({
+          ...args,
+          user: context.req.user
+        })
+        return {
+          responseResult: graphHelper.generateSuccess('History has been updated.'),
           page
         }
       } catch (err) {

@@ -37,7 +37,17 @@
               label='Locale'
               :items='langs'
               v-model='selectedLang'
-              style='max-width: 250px;'
+              style='max-width: 200px;'
+            )
+            v-select.ml-2(
+              solo
+              flat
+              hide-details
+              dense
+              label='Submit State'
+              :items='submitStates'
+              v-model='selectedSubmitState'
+              style='max-width: 200px;'
             )
             v-select.ml-2(
               solo
@@ -47,7 +57,7 @@
               label='Publish State'
               :items='states'
               v-model='selectedState'
-              style='max-width: 250px;'
+              style='max-width: 200px;'
             )
           v-divider
           v-data-table(
@@ -61,7 +71,6 @@
             sort-by='updatedAt',
             sort-desc,
             hide-default-footer
-            @page-count="pageTotal = $event"
           )
             template(slot='item', slot-scope='props')
               tr.is-clickable(:active='props.selected', @click='$router.push(`/pages/` + props.item.id)')
@@ -90,7 +99,6 @@ export default {
       selectedPage: {},
       pagination: 1,
       pages: [],
-      pageTotal: 0,
       headers: [
         { text: 'ID', value: 'id', width: 80, sortable: true },
         { text: 'Title', value: 'title' },
@@ -100,22 +108,34 @@ export default {
       ],
       search: '',
       selectedLang: null,
-      selectedState: null,
+      selectedState: false,
+      selectedSubmitState: true,
       states: [
         { text: 'All Publishing States', value: null },
         { text: 'Published', value: true },
         { text: 'Not Published', value: false }
       ],
+      submitStates: [
+        { text: 'All Submit States', value: null },
+        { text: 'Submitted', value: true },
+        { text: 'Not Submitted', value: false }
+      ],
       loading: false
     }
   },
   computed: {
+    pageTotal () {
+      return Math.ceil(this.filteredPages.length / 15)
+    },
     filteredPages () {
       return _.filter(this.pages, pg => {
         if (this.selectedLang !== null && this.selectedLang !== pg.locale) {
           return false
         }
         if (this.selectedState !== null && this.selectedState !== pg.isPublished) {
+          return false
+        }
+        if (this.selectedSubmitState !== null && this.selectedSubmitState !== pg.isSubmit) {
           return false
         }
         return true

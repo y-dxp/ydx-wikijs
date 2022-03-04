@@ -15,9 +15,9 @@ extend type Mutation {
 # -----------------------------------------------
 
 type SystemQuery {
-  flags: [SystemFlag] @auth(requires: ["manage:system"])
+  flags: [SystemFlag] @auth(requires: ["manage:navigation", "manage:system"])
   info: SystemInfo
-  extensions: [SystemExtension]! @auth(requires: ["manage:system"])
+  extensions: [SystemExtension]! @auth(requires: ["manage:navigation","manage:system"])
 }
 
 # -----------------------------------------------
@@ -66,7 +66,7 @@ input SystemFlagInput {
 type SystemInfo {
   configFile: String @auth(requires: ["manage:system"])
   cpuCores: Int @auth(requires: ["manage:system"])
-  currentVersion: String @auth(requires: ["manage:system"])
+  currentVersion: String @auth(requires: ["manage:system", "manage:navigation"])
   dbHost: String @auth(requires: ["manage:system"])
   dbType: String @auth(requires: ["manage:system"])
   dbVersion: String @auth(requires: ["manage:system"])
@@ -75,7 +75,7 @@ type SystemInfo {
   httpPort: Int @auth(requires: ["manage:system"])
   httpRedirection: Boolean @auth(requires: ["manage:system"])
   httpsPort: Int @auth(requires: ["manage:system"])
-  latestVersion: String @auth(requires: ["manage:system"])
+  latestVersion: String @auth(requires: ["manage:system", "manage:navigation"])
   latestVersionReleaseDate: Date @auth(requires: ["manage:system"])
   nodeVersion: String @auth(requires: ["manage:system"])
   operatingSystem: String @auth(requires: ["manage:system"])

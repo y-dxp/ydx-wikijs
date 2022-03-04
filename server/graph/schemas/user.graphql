@@ -30,7 +30,7 @@ type UserQuery {
 
   profile: UserProfile
 
-  lastLogins: [UserLastLogin] @auth(requires: ["write:groups", "manage:groups", "write:users", "manage:users", "manage:system"])
+  lastLogins: [UserLastLogin] @auth(requires: ["write:groups", "manage:groups", "write:users", "manage:users", "manage:system", "manage:navigation"])
 }
 
 # -----------------------------------------------

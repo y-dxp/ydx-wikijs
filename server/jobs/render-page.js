@@ -90,7 +90,5 @@ module.exports = async (pageId) => {
   } catch (err) {
     WIKI.logger.error(`Rendering page ID ${pageId}: [ FAILED ]`)
     WIKI.logger.error(err.message)
-    // exit process with error code
-    throw err
   }
 }

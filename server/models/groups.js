@@ -27,6 +27,7 @@ module.exports = class Group extends Model {
   }
 
   static get relationMappings() {
+    console.log('relationMappings')
     return {
       users: {
         relation: Model.ManyToManyRelation,

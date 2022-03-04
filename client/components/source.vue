@@ -86,7 +86,6 @@ export default {
 .source {
   pre > code {
     box-shadow: none;
-    background-color: transparent;
     color: mc('grey', '800');
     font-family: 'Roboto Mono', sans-serif;
     font-weight: 400;

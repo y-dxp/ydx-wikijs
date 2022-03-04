@@ -346,6 +346,7 @@ module.exports = class User extends Model {
         }
       }
     }
+    console.info(redirect)
 
     // Is 2FA required?
     if (!skipTFA) {

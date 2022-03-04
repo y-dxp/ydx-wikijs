@@ -31,21 +31,25 @@
         v-icon mdi-menu
 
     v-main(ref='content')
-      template(v-if='path !== `home`')
+      template(v-if='path !== `home` && (!isPublished || !isSubmit)')
         v-toolbar(:color='$vuetify.theme.dark ? `grey darken-4-d3` : `grey lighten-3`', flat, dense, v-if='$vuetify.breakpoint.smAndUp')
           //- v-btn.pl-0(v-if='$vuetify.breakpoint.xsOnly', flat, @click='toggleNavigation')
           //-   v-icon(color='grey darken-2', left) menu
           //-   span Navigation
-          v-breadcrumbs.breadcrumbs-nav.pl-0(
-            :items='breadcrumbs'
-            divider='/'
-            )
-            template(slot='item', slot-scope='props')
-              v-icon(v-if='props.item.path === "/"', small, @click='goHome') mdi-home
-              v-btn.ma-0(v-else, :href='props.item.path', small, text) {{props.item.name}}
+          //- v-breadcrumbs.breadcrumbs-nav.pl-0(
+          //-   :items='breadcrumbs'
+          //-   divider='/'
+          //-   )
+          //-   template(slot='item', slot-scope='props')
+          //-     v-icon(v-if='props.item.path === "/"', small, @click='goHome') mdi-home
+          //-     v-btn.ma-0(v-else, :href='props.item.path', small, text) {{props.item.name}}
           template(v-if='!isPublished')
             v-spacer
             .caption.red--text {{$t('common:page.unpublished')}}
+            status-indicator.ml-3(negative, pulse)
+          template(v-if='!isSubmit')
+            v-spacer
+            .caption.red--text Unsubmitted
             status-indicator.ml-3(negative, pulse)
         v-divider
       v-container.grey.pa-0(fluid, :class='$vuetify.theme.dark ? `darken-4-l3` : `lighten-4`')
@@ -61,12 +65,16 @@
               .overline.pa-5.pb-0(:class='$vuetify.theme.dark ? `blue--text text--lighten-2` : `primary--text`') {{$t('common:page.toc')}}
               v-list.pb-3(dense, nav, :class='$vuetify.theme.dark ? `darken-3-d3` : ``')
                 template(v-for='(tocItem, tocIdx) in tocDecoded')
-                  v-list-item(@click='$vuetify.goTo(tocItem.anchor, scrollOpts)')
+                  v-list-item(
+                    @click='$vuetify.goTo(tocItem.anchor, scrollOpts), addURIToUrl(tocItem.anchor, tocIdx)'
+                  )
                     v-icon(color='grey', small) {{ $vuetify.rtl ? `mdi-chevron-left` : `mdi-chevron-right` }}
                     v-list-item-title.px-3 {{tocItem.title}}
                   //- v-divider(v-if='tocIdx < toc.length - 1 || tocItem.children.length')
                   template(v-for='tocSubItem in tocItem.children')
-                    v-list-item(@click='$vuetify.goTo(tocSubItem.anchor, scrollOpts)')
+                    v-list-item(
+                      @click='$vuetify.goTo(tocSubItem.anchor, scrollOpts), addURIToUrl(tocItem.anchor, tocSubItem)'
+                      )
                       v-icon.px-3(color='grey lighten-1', small) {{ $vuetify.rtl ? `mdi-chevron-left` : `mdi-chevron-right` }}
                       v-list-item-title.px-3.caption.grey--text(:class='$vuetify.theme.dark ? `text--lighten-1` : `text--darken-1`') {{tocSubItem.title}}
                     //- v-divider(inset, v-if='tocIdx < toc.length - 1')
@@ -234,30 +242,30 @@
                         )
                         v-icon(size='20') mdi-code-tags
                     span {{$t('common:header.viewSource')}}
-                  v-tooltip(:right='$vuetify.rtl', :left='!$vuetify.rtl', v-if='hasWritePagesPermission')
-                    template(v-slot:activator='{ on }')
-                      v-btn(
-                        fab
-                        small
-                        color='white'
-                        light
-                        v-on='on'
-                        @click='pageConvert'
-                        )
-                        v-icon(size='20') mdi-lightning-bolt
-                    span {{$t('common:header.convert')}}
-                  v-tooltip(:right='$vuetify.rtl', :left='!$vuetify.rtl', v-if='hasWritePagesPermission')
-                    template(v-slot:activator='{ on }')
-                      v-btn(
-                        fab
-                        small
-                        color='white'
-                        light
-                        v-on='on'
-                        @click='pageDuplicate'
-                        )
-                        v-icon(size='20') mdi-content-duplicate
-                    span {{$t('common:header.duplicate')}}
+                  //- v-tooltip(:right='$vuetify.rtl', :left='!$vuetify.rtl', v-if='hasWritePagesPermission')
+                  //-   template(v-slot:activator='{ on }')
+                  //-     v-btn(
+                  //-       fab
+                  //-       small
+                  //-       color='white'
+                  //-       light
+                  //-       v-on='on'
+                  //-       @click='pageConvert'
+                  //-       )
+                  //-       v-icon(size='20') mdi-lightning-bolt
+                  //-   span {{$t('common:header.convert')}}
+                  //- v-tooltip(:right='$vuetify.rtl', :left='!$vuetify.rtl', v-if='hasWritePagesPermission')
+                  //-   template(v-slot:activator='{ on }')
+                  //-     v-btn(
+                  //-       fab
+                  //-       small
+                  //-       color='white'
+                  //-       light
+                  //-       v-on='on'
+                  //-       @click='pageDuplicate'
+                  //-       )
+                  //-       v-icon(size='20') mdi-content-duplicate
+                  //-   span {{$t('common:header.duplicate')}}
                   v-tooltip(:right='$vuetify.rtl', :left='!$vuetify.rtl', v-if='hasManagePagesPermission')
                     template(v-slot:activator='{ on }')
                       v-btn(
@@ -270,7 +278,7 @@
                         )
                         v-icon(size='20') mdi-content-save-move-outline
                     span {{$t('common:header.move')}}
-                  v-tooltip(:right='$vuetify.rtl', :left='!$vuetify.rtl', v-if='hasDeletePagesPermission')
+                  v-tooltip(:right='$vuetify.rtl', :left='!$vuetify.rtl', v-if='hasDeletePagesPermission && deletePagePermission')
                     template(v-slot:activator='{ on }')
                       v-btn(
                         fab
@@ -279,6 +287,7 @@
                         color='red'
                         v-on='on'
                         @click='pageDelete'
+
                         )
                         v-icon(size='20') mdi-trash-can-outline
                     span {{$t('common:header.delete')}}
@@ -478,6 +487,7 @@ export default {
     isAuthenticated: get('user/authenticated'),
     commentsCount: get('page/commentsCount'),
     commentsPerms: get('page/effectivePermissions@comments'),
+    isSubmit: get('page/isSubmit'),
     rating: {
       get () {
         return 3.5
@@ -495,7 +505,12 @@ export default {
         return result
       }, []))
     },
-    pageUrl () { return window.location.href },
+    pageUrl () {
+      if (window.location.href.includes('#/')) {
+        return window.location.assign(window.location.href.replace('#/', ''))
+      }
+      return window.location.href
+    },
     upBtnPosition () {
       if (this.$vuetify.breakpoint.mdAndUp) {
         return this.$vuetify.rtl ? `right: 235px;` : `left: 235px;`
@@ -515,9 +530,14 @@ export default {
     hasDeletePagesPermission: get('page/effectivePermissions@pages.delete'),
     hasReadSourcePermission: get('page/effectivePermissions@source.read'),
     hasReadHistoryPermission: get('page/effectivePermissions@history.read'),
+    loginUserPermissions: get('user/permissions'),
+    pageIsPublished: get('page/isPublished'),
     hasAnyPagePermissions () {
       return this.hasAdminPermission || this.hasWritePagesPermission || this.hasManagePagesPermission ||
         this.hasDeletePagesPermission || this.hasReadSourcePermission || this.hasReadHistoryPermission
+    },
+    deletePagePermission () {
+      return (this.hasDeletePagesPermission && !this.pageIsPublished) || this.loginUserPermissions.includes('manage:navigation') || this.loginUserPermissions.includes('manage:system')
     },
     printView: sync('site/printView')
   },
@@ -564,11 +584,11 @@ export default {
     if (window.location.hash && window.location.hash.length > 1) {
       if (document.readyState === 'complete') {
         this.$nextTick(() => {
-          this.$vuetify.goTo(decodeURIComponent(window.location.hash), this.scrollOpts)
+          this.$vuetify.goTo(window.location.hash, this.scrollOpts)
         })
       } else {
         window.addEventListener('load', () => {
-          this.$vuetify.goTo(decodeURIComponent(window.location.hash), this.scrollOpts)
+          this.$vuetify.goTo(window.location.hash, this.scrollOpts)
         })
       }
     }
@@ -579,7 +599,7 @@ export default {
         el.onclick = ev => {
           ev.preventDefault()
           ev.stopPropagation()
-          this.$vuetify.goTo(decodeURIComponent(ev.currentTarget.hash), this.scrollOpts)
+          this.$vuetify.goTo(decodeURIComponent(ev.target.hash), this.scrollOpts)
         }
       })
     })
@@ -611,6 +631,10 @@ export default {
     pageHistory () {
       this.$root.$emit('pageHistory')
     },
+    pageReviewsHistory () {
+      this.$root.$emit('pageReviewsHistory')
+    },
+
     pageSource () {
       this.$root.$emit('pageSource')
     },
@@ -639,6 +663,13 @@ export default {
       this.$vuetify.goTo('#discussion', this.scrollOpts)
       if (focusNewComment) {
         document.querySelector('#discussion-new').focus()
+      }
+    },
+    addURIToUrl(first, second) {
+      if (_.isNumber(second)) {
+        window.location.href = first
+      } else {
+        window.location.href = second.anchor
       }
     }
   }
@@ -669,11 +700,12 @@ export default {
   top: 64px;
   max-height: calc(100vh - 64px);
   overflow-y: auto;
-  -ms-overflow-style: none;
+  padding: 0px 0px 0px 12px !important;
+  // -ms-overflow-style: none;
 }
 
-.page-col-sd::-webkit-scrollbar {
-  display: none;
-}
+// .page-col-sd::-webkit-scrollbar {
+//   display: none;
+// }
 
 </style>

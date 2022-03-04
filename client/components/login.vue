@@ -4,8 +4,9 @@
       .login-sd
         .d-flex.mb-5
           .login-logo
-            v-avatar(tile, size='34')
-              v-img(:src='logoUrl')
+            v-avatar(tile, size='34', style =" height: 58px !important; width: 58px !important; right: 12px !important; bottom: 12px !important;")
+              //- v-img(:src='logoUrl')
+              img(src='/_assets/svg/yokogawa-icon.png', alt='Logo')
           .login-title
             .text-h6.grey--text.text--darken-4 {{ siteTitle }}
         v-alert.mb-0(
@@ -497,6 +498,15 @@ export default {
      * CHANGE PASSWORD
      */
     async changePassword () {
+      if (this.newPassword !== this.newPasswordVerify) {
+        this.$store.commit('showNotification', {
+          style: 'red',
+          message: 'New Password and Verify New Password Field do not match',
+          icon: 'alert'
+        })
+        return
+      }
+
       this.loaderColor = 'grey darken-4'
       this.loaderTitle = this.$t('auth:changePwd.loading')
       this.isLoading = true
@@ -587,7 +597,7 @@ export default {
             }
           `,
           variables: {
-            email: this.username
+            email: this.username.toLowerCase()
           }
         })
         if (_.has(resp, 'data.authentication.forgotPassword.responseResult')) {

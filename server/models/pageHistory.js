@@ -26,6 +26,9 @@ module.exports = class PageHistory extends Model {
         publishEndDate: {type: 'string'},
         content: {type: 'string'},
         contentType: {type: 'string'},
+        isReviewed: {type: 'boolean'},
+        isApproved: {type: 'boolean'},
+        newContent: {type: 'string'},
 
         createdAt: {type: 'string'}
       }
@@ -89,24 +92,100 @@ module.exports = class PageHistory extends Model {
    * Create Page Version
    */
   static async addVersion(opts) {
-    await WIKI.models.pageHistory.query().insert({
-      pageId: opts.id,
-      authorId: opts.authorId,
-      content: opts.content,
-      contentType: opts.contentType,
-      description: opts.description,
-      editorKey: opts.editorKey,
-      hash: opts.hash,
-      isPrivate: (opts.isPrivate === true || opts.isPrivate === 1),
-      isPublished: (opts.isPublished === true || opts.isPublished === 1),
-      localeCode: opts.localeCode,
-      path: opts.path,
-      publishEndDate: opts.publishEndDate || '',
-      publishStartDate: opts.publishStartDate || '',
-      title: opts.title,
-      action: opts.action || 'updated',
-      versionDate: opts.versionDate
-    })
+    let isHistoryExist = await WIKI.models.pageHistory.query()
+      .where({
+        'pageHistory.pageId': opts.id,
+        'pageHistory.authorId': opts.authorId,
+        'pageHistory.isReviewed': false
+      })
+    if (isHistoryExist.length > 0) {
+      await this.editUserPageVersion(opts)
+    } else {
+      await WIKI.models.pageHistory.query().insert({
+        pageId: opts.id,
+        authorId: opts.authorId,
+        content: opts.content,
+        contentType: opts.contentType,
+        description: opts.description,
+        editorKey: opts.editorKey,
+        hash: opts.hash,
+        isPrivate: (opts.isPrivate === true || opts.isPrivate === 1),
+        isPublished: (opts.isPublished === true || opts.isPublished === 1),
+        localeCode: opts.localeCode,
+        path: opts.path,
+        publishEndDate: opts.publishEndDate || '',
+        publishStartDate: opts.publishStartDate || '',
+        title: opts.title,
+        action: opts.action || 'updated',
+        isReviewed: opts.isReviewed,
+        isApproved: opts.isApproved,
+        newContent: opts.newContent,
+        versionDate: opts.versionDate
+      })
+    }
+  }
+
+  /**
+   * Edit Page Version
+   */
+  static async editUserPageVersion(opts) {
+    await WIKI.models.pageHistory.query()
+      .where({
+        'pageHistory.pageId': opts.id,
+        'pageHistory.authorId': opts.authorId,
+        'pageHistory.isReviewed': false
+      })
+      .patch({
+        pageId: opts.id,
+        authorId: opts.authorId,
+        contentType: opts.contentType,
+        description: opts.description,
+        editorKey: opts.editorKey,
+        hash: opts.hash,
+        isPrivate: (opts.isPrivate === true || opts.isPrivate === 1),
+        isPublished: (opts.isPublished === true || opts.isPublished === 1),
+        localeCode: opts.localeCode,
+        path: opts.path,
+        publishEndDate: opts.publishEndDate || '',
+        publishStartDate: opts.publishStartDate || '',
+        title: opts.title,
+        action: opts.action || 'updated',
+        isReviewed: opts.isReviewed,
+        isApproved: opts.isApproved,
+        newContent: opts.newContent,
+        versionDate: new Date().toISOString()
+      })
+  }
+
+  /**
+   * Edit Page Version
+   */
+  static async editVersion(opts) {
+    await WIKI.models.pageHistory.query()
+      .where({
+        'pageHistory.id': opts.versionId
+      })
+      .patch({
+        isReviewed: opts.isReviewed,
+        isApproved: opts.isApproved
+      })
+  }
+
+  /**
+   * Edit history Version by reviewer
+   */
+  static async updateHistoryByReviewer(opts) {
+    await WIKI.models.pageHistory.query()
+      .where({
+        'pageHistory.pageId': opts.pageId,
+        'pageHistory.authorId': opts.authorId,
+        'pageHistory.isReviewed': false
+      })
+      .patch({
+        content: opts.content,
+        newContent: opts.newContent,
+        versionDate: new Date().toISOString()
+      })
   }
 
   /**
@@ -123,6 +202,7 @@ module.exports = class PageHistory extends Model {
         'pageHistory.publishStartDate',
         'pageHistory.publishEndDate',
         'pageHistory.content',
+        'pageHistory.newContent',
         'pageHistory.contentType',
         'pageHistory.createdAt',
         'pageHistory.action',
@@ -221,6 +301,106 @@ module.exports = class PageHistory extends Model {
           valueBefore,
           valueAfter,
           versionDate: ph.versionDate
+        })
+
+        prevPh = ph
+        return res
+      }, []),
+      total: history.total
+    }
+  }
+
+  static async getReviewHistory({ offsetPage = 0, offsetSize = 500 }) {
+    const history = await WIKI.models.pageHistory.query()
+      .column([
+        'pageHistory.id',
+        'pageHistory.path',
+        'pageHistory.authorId',
+        'pageHistory.action',
+        'pageHistory.versionDate',
+        'pageHistory.content',
+        'pageHistory.newContent',
+        'pageHistory.title',
+        'pageHistory.path',
+        'pageHistory.createdAt',
+        'pageHistory.pageId',
+        'pageHistory.localeCode',
+        'pageHistory.isApproved',
+        'pageHistory.isReviewed',
+        {
+          authorName: 'author.name'
+        }
+      ])
+      .where({
+        'pageHistory.isReviewed': false
+      })
+      .joinRelated('author')
+      .orderBy('pageHistory.versionDate', 'desc')
+      .page(offsetPage, offsetSize)
+
+    let prevPh = null
+    const upperLimit = (offsetPage + 1) * offsetSize
+    if (history.total >= upperLimit) {
+      prevPh = await WIKI.models.pageHistory.query()
+        .column([
+          'pageHistory.id',
+          'pageHistory.path',
+          'pageHistory.authorId',
+          'pageHistory.action',
+          'pageHistory.versionDate',
+          'pageHistory.content',
+          'pageHistory.newContent',
+          'pageHistory.title',
+          'pageHistory.path',
+          'pageHistory.createdAt',
+          'pageHistory.pageId',
+          'pageHistory.localeCode',
+          'pageHistory.isApproved',
+          'pageHistory.isReviewed',
+          {
+            authorName: 'author.name'
+          }
+        ])
+        .where({
+          'pageHistory.isReviewed': false
+        })
+        .joinRelated('author')
+        .orderBy('pageHistory.versionDate', 'desc')
+        .offset((offsetPage + 1) * offsetSize)
+        .limit(1)
+        .first()
+    }
+    return {
+      trail: _.reduce(_.reverse(history.results), (res, ph) => {
+        let actionType = 'edit'
+        let valueBefore = null
+        let valueAfter = null
+
+        if (!prevPh && history.total < upperLimit) {
+          actionType = 'initial'
+        } else if (_.get(prevPh, 'path', '') !== ph.path) {
+          actionType = 'move'
+          valueBefore = _.get(prevPh, 'path', '')
+          valueAfter = ph.path
+        }
+
+        res.unshift({
+          versionId: ph.id,
+          authorId: ph.authorId,
+          authorName: ph.authorName,
+          actionType,
+          valueBefore,
+          valueAfter,
+          versionDate: ph.versionDate,
+          content: ph.content,
+          newContent: ph.newContent,
+          title: ph.title,
+          path: ph.path,
+          createdAt: ph.createdAt,
+          pageId: ph.pageId,
+          localeCode: ph.localeCode,
+          isApproved: ph.isApproved,
+          isReviewed: ph.isReviewed
         })
 
         prevPh = ph

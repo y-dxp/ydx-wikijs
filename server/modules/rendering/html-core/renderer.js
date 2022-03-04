@@ -201,11 +201,10 @@ module.exports = {
 
     let headers = []
     $('h1,h2,h3,h4,h5,h6').each((i, elm) => {
-      let headerSlug = uslug($(elm).text())
-      // -> If custom ID is defined, try to use that instead
       if ($(elm).attr('id')) {
-        headerSlug = $(elm).attr('id')
+        return
       }
+      let headerSlug = uslug($(elm).text())
 
       // -> Cannot start with a number (CSS selector limitation)
       if (headerSlug.match(/^\d/)) {
@@ -234,11 +233,11 @@ module.exports = {
     })
 
     // --------------------------------
-    // Wrap non-empty root text nodes
+    // Wrap root text nodes
     // --------------------------------
 
     $('body').contents().toArray().forEach(item => {
-      if (item && item.type === 'text' && item.parent.name === 'body' && item.data !== `\n` && item.data !== `\r`) {
+      if (item.type === 'text' && item.parent.name === 'body') {
         $(item).wrap('<div></div>')
       }
     })
@@ -250,7 +249,7 @@ module.exports = {
     function iterateMustacheNode (node) {
       const list = $(node).contents().toArray()
       list.forEach(item => {
-        if (item && item.type === 'text') {
+        if (item.type === 'text') {
           const rawText = $(item).text().replace(/\r?\n|\r/g, '')
           if (mustacheRegExp.test(rawText)) {
             $(item).parent().attr('v-pre', true)

@@ -249,10 +249,28 @@ module.exports = () => {
         ]),
         isSystem: true
       })
-      if (adminGroup.id !== 1 || guestGroup.id !== 2) {
+      const editorGroup = await WIKI.models.groups.query().insert({
+        name: 'Editor',
+        permissions: JSON.stringify(['read:pages', 'write:pages', 'manage:pages', 'delete:pages', 'write:styles', 'write:scripts', 'read:source', 'read:history', 'read:assets', 'write:assets', 'manage:assets', 'read:comments', 'write:comments', 'manage:comments', 'manage:navigation']),
+        pageRules: JSON.stringify([
+          { id: 'Editor', roles: ['read:pages', 'write:pages', 'manage:pages', 'delete:pages', 'read:history', 'read:assets', 'write:assets', 'manage:assets', 'read:comments', 'write:comments', 'manage:comments'], match: 'START', deny: false, path: '', locales: [] }
+        ]),
+        isSystem: true
+      })
+      if (adminGroup.id !== 1 || guestGroup.id !== 2 || editorGroup.id !== 3) {
         throw new Error('Incorrect groups auto-increment configuration! Should start at 0 and increment by 1. Contact your database administrator.')
       }
-
+      const authorGroup = await WIKI.models.groups.query().insert({
+        name: 'Author',
+        permissions: JSON.stringify(['read:pages', 'write:pages', 'delete:pages', 'read:assets', 'write:assets', 'read:comments', 'write:comments']),
+        pageRules: JSON.stringify([
+          { id: 'Author', roles: ['read:pages', 'write:pages', 'delete:pages', 'manage:pages', 'read:assets', 'write:assets', 'read:comments', 'write:comments'], match: 'START', deny: false, path: '', locales: [] }
+        ]),
+        isSystem: true
+      })
+      if (adminGroup.id !== 1 || guestGroup.id !== 2 || editorGroup.id !== 3 || authorGroup.id !== 4) {
+        throw new Error('Incorrect groups auto-increment configuration! Should start at 0 and increment by 1. Contact your database administrator.')
+      }
       // Load local authentication strategy
       await WIKI.models.authentication.query().insert({
         key: 'local',
@@ -288,7 +306,7 @@ module.exports = () => {
       // Create root administrator
       WIKI.logger.info('Creating root administrator...')
       const adminUser = await WIKI.models.users.query().insert({
-        email: req.body.adminEmail.toLowerCase(),
+        email: req.body.adminEmail,
         provider: 'local',
         password: req.body.adminPassword,
         name: 'Administrator',

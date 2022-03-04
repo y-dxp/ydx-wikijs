@@ -8,6 +8,7 @@ query($id: Int!) {
       description
       isPrivate
       isPublished
+      isSubmit
       privateNS
       publishStartDate
       publishEndDate

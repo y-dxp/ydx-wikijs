@@ -30,3 +30,5 @@ $display-breakpoints: (
   'lg-and-up': 'only screen and (min-width: #{map-get($grid-breakpoints, 'lg')})',
   'xl-only': 'only screen and (min-width: #{map-get($grid-breakpoints, 'xl')})'
 ) !default;
+
+@import "./custom.scss";

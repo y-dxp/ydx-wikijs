@@ -21,6 +21,11 @@ type PageQuery {
     offsetSize: Int
   ): PageHistoryResult @auth(requires: ["manage:system", "read:history"])
 
+  reviewHistory(
+    offsetPage: Int
+    offsetSize: Int
+  ): PageReviewHistoryResult @auth(requires: ["manage:system", "read:history"])
+
   version(
     pageId: Int!
     versionId: Int!
@@ -84,6 +89,7 @@ type PageMutation {
     description: String!
     editor: String!
     isPublished: Boolean!
+    isSubmit:Boolean!
     isPrivate: Boolean!
     locale: String!
     path: String!
@@ -110,7 +116,22 @@ type PageMutation {
     scriptJs: String
     tags: [String]
     title: String
+    isSubmit: Boolean
   ): PageResponse @auth(requires: ["write:pages", "manage:pages", "manage:system"])
+
+updateHistory(
+    id: Int!
+    isReviewed: Boolean
+    isApproved: Boolean
+  ): PageResponse @auth(requires: ["write:pages", "manage:pages", "manage:system"])
+
+updateHistoryByReviewer(
+    pageId: Int
+    authorId: Int
+    content: String
+    newContent: String
+  ): PageResponse @auth(requires: [ "manage:navigation", "manage:system"])
+
 
   convert(
     id: Int!
@@ -182,6 +203,7 @@ type Page {
   description: String!
   isPrivate: Boolean! @auth(requires: ["write:pages", "manage:system"])
   isPublished: Boolean! @auth(requires: ["write:pages", "manage:system"])
+  isSubmit: Boolean! @auth(requires: ["write:pages", "manage:system"])
   privateNS: String @auth(requires: ["write:pages", "manage:system"])
   publishStartDate: Date! @auth(requires: ["write:pages", "manage:system"])
   publishEndDate: Date! @auth(requires: ["write:pages", "manage:system"])
@@ -222,11 +244,40 @@ type PageHistory {
   valueAfter: String
 }
 
+type PageReviewHistoryResult {
+  trail: [PageReviewHistory]
+  total: Int!
+}
+
+type PageReviewHistory {
+  versionId: Int!
+  versionDate: Date!
+  authorId: Int!
+  authorName: String!
+  actionType: String!
+  valueBefore: String
+  valueAfter: String
+  content: String
+  newContent: String
+  title: String
+  path: String
+  description: String!
+  isPublished: Boolean!
+  publishStartDate: String!
+  publishEndDate: String!
+  createdAt: String
+  pageId: Int!
+  localeCode: String
+  isReviewed: Boolean
+  isApproved: Boolean
+}
+
 type PageVersion {
   action: String!
   authorId: String!
   authorName: String!
   content: String!
+  newContent: String!
   contentType: String!
   createdAt: Date!
   versionDate: Date!
@@ -271,6 +322,7 @@ type PageListItem {
   description: String
   contentType: String!
   isPublished: Boolean!
+  isSubmit: Boolean!
   isPrivate: Boolean!
   privateNS: String
   createdAt: Date!
@@ -289,6 +341,9 @@ type PageTreeItem {
   parent: Int
   pageId: Int
   locale: String!
+  isPublished: Boolean!
+  isSubmit: Boolean!
+  creatorId: Int!
 }
 
 type PageLinkItem {

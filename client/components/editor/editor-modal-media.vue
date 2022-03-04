@@ -143,7 +143,7 @@
                 allow-multiple='true'
                 :files='files'
                 max-files='10'
-                :server='filePondServerOpts'
+                server='/u'
                 :instant-upload='false'
                 :allow-revert='false'
                 @processfile='onFileProcessed'
@@ -230,7 +230,6 @@
 <script>
 import _ from 'lodash'
 import { get, sync } from 'vuex-pathify'
-import Cookies from 'js-cookie'
 import vueFilePond from 'vue-filepond'
 import 'filepond/dist/filepond.min.css'
 
@@ -313,17 +312,6 @@ export default {
     },
     currentAsset () {
       return _.find(this.assets, ['id', this.currentFileId]) || {}
-    },
-    filePondServerOpts () {
-      const jwtToken = Cookies.get('jwt')
-      return {
-        process: {
-          url: '/u',
-          headers: {
-            'Authorization': `Bearer ${jwtToken}`
-          }
-        }
-      }
     }
   },
   watch: {

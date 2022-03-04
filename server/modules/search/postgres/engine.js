@@ -100,11 +100,13 @@ module.exports = {
    * @param {Object} page Page to create
    */
   async created(page) {
-    await WIKI.models.knex.raw(`
+    if (page.isPublished) {
+      await WIKI.models.knex.raw(`
       INSERT INTO "pagesVector" (path, locale, title, description, "tokens") VALUES (
         ?, ?, ?, ?, (setweight(to_tsvector('${this.config.dictLanguage}', ?), 'A') || setweight(to_tsvector('${this.config.dictLanguage}', ?), 'B') || setweight(to_tsvector('${this.config.dictLanguage}', ?), 'C'))
       )
     `, [page.path, page.localeCode, page.title, page.description, page.title, page.description, page.safeContent])
+    }
   },
   /**
    * UPDATE
@@ -112,7 +114,19 @@ module.exports = {
    * @param {Object} page Page to update
    */
   async updated(page) {
-    await WIKI.models.knex.raw(`
+    if (page.isPublished) {
+      // check if the page is exists
+      let ifExist = await WIKI.models.knex('pagesVector').where({
+        path: page.path
+      })
+
+      if (ifExist.length === 0) {
+        // create the page if not exist
+        await this.created(page)
+      }
+
+      // update the page
+      await WIKI.models.knex.raw(`
       UPDATE "pagesVector" SET
         title = ?,
         description = ?,
@@ -121,6 +135,7 @@ module.exports = {
         setweight(to_tsvector('${this.config.dictLanguage}', ?), 'C'))
       WHERE path = ? AND locale = ?
     `, [page.title, page.description, page.title, page.description, page.safeContent, page.path, page.localeCode])
+    }
   },
   /**
    * DELETE
@@ -154,7 +169,6 @@ module.exports = {
     WIKI.logger.info(`(SEARCH/POSTGRES) Rebuilding Index...`)
     await WIKI.models.knex('pagesVector').truncate()
     await WIKI.models.knex('pagesWords').truncate()
-
     await pipeline(
       WIKI.models.knex.column('path', 'localeCode', 'title', 'description', 'render').select().from('pages').where({
         isPublished: true,

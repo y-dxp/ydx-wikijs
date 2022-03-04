@@ -19,7 +19,7 @@ module.exports = {
     } catch (err) {
       WIKI.logger.error('Database Initialization Error: ' + err.message)
       if (WIKI.IS_DEBUG) {
-        WIKI.logger.error(err)
+        console.error(err)
       }
       process.exit(1)
     }
@@ -107,21 +107,19 @@ module.exports = {
    * Graceful shutdown
    */
   async shutdown () {
-    if (WIKI.servers) {
-      await WIKI.servers.stopServers()
-    }
-    if (WIKI.scheduler) {
-      await WIKI.scheduler.stop()
-    }
     if (WIKI.models) {
       await WIKI.models.unsubscribeToNotifications()
-      if (WIKI.models.knex) {
-        await WIKI.models.knex.destroy()
-      }
+      await WIKI.models.knex.client.pool.destroy()
+      await WIKI.models.knex.destroy()
+    }
+    if (WIKI.scheduler) {
+      WIKI.scheduler.stop()
     }
     if (WIKI.asar) {
       await WIKI.asar.unload()
     }
-    process.exit(0)
+    if (WIKI.servers) {
+      await WIKI.servers.stopServers()
+    }
   }
 }

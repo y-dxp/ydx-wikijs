@@ -8,18 +8,47 @@
     .dialog-header
       v-icon(color='white') mdi-tag-text-outline
       .subtitle-1.white--text.ml-3 {{$t('editor:props.pageProperties')}}
-      v-spacer
       v-btn.mx-0(
         outlined
         dark
+        style="left: 320px;"
+        :disabled='!hasAdminRight || isLoading || this.mode === "create" || isDirty'
+        @click.native='approve'
+        )
+        v-icon(left) mdi-check
+        span Approve
+      v-btn.mx-0(
+        outlined
+        dark
+        :disabled='!hasAdminRight || isLoading || this.mode === "create" || isDirty'
+        style="left: 340px;"
+        @click.native='reject'
+        )
+        v-icon(left) mdi-check
+        span Reject
+      v-btn.mx-0(
+        outlined
+        dark
+        :disabled='isLoading || !hasAdminRight'
+        style="left: 360px;"
         @click.native='close'
         )
         v-icon(left) mdi-check
-        span {{ $t('common:actions.ok') }}
+        span Close
+      v-btn.mx-0(
+        outlined
+        dark
+        :disabled='isLoading'
+        style="left: 380px;"
+        @click.native='close'
+        )
+        v-icon(left) mdi-check
+        span OK
+
     v-card(tile)
       v-tabs(color='white', background-color='blue darken-1', dark, centered, v-model='currentTab')
         v-tab {{$t('editor:props.info')}}
-        v-tab {{$t('editor:props.scheduling')}}
+        v-tab(:disabled='!hasAdministratorRight') {{$t('editor:props.scheduling')}}
         v-tab(:disabled='!hasScriptPermission') {{$t('editor:props.scripts')}}
         v-tab(disabled) {{$t('editor:props.social')}}
         v-tab(:disabled='!hasStylePermission') {{$t('editor:props.styles')}}
@@ -64,7 +93,6 @@
                     :hint='$t(`editor:props.pathHint`)'
                     persistent-hint
                     @click:append='showPathSelector'
-                    :rules='[rules.required, rules.path]'
                     )
           v-divider
           v-card-text.grey.pt-5(:class='$vuetify.theme.dark ? `darken-3-d5` : `lighten-4`')
@@ -240,7 +268,6 @@
             textarea(ref='codecss')
           .editor-props-codeeditor-hint
             .caption {{$t('editor:props.cssHint')}}
-
     page-selector(:mode='pageSelectorMode', v-model='pageSelectorShown', :path='path', :locale='locale', :open-handler='setPath')
 </template>
 
@@ -250,12 +277,12 @@ import { sync, get } from 'vuex-pathify'
 import gql from 'graphql-tag'
 
 import CodeMirror from 'codemirror'
+import mailreviewedEmailbyAdminMutation from 'gql/admin/mail/mail-mutation-reviewedEmailbyAdmin.gql'
 import 'codemirror/lib/codemirror.css'
 import 'codemirror/mode/htmlmixed/htmlmixed.js'
 import 'codemirror/mode/css/css.js'
 
 /* global siteLangs, siteConfig */
-const filenamePattern = /^(?![\#\/\.\$\^\=\*\;\:\&\?\(\)\[\]\{\}\"\'\>\<\,\@\!\%\`\~\s])(?!.*[\#\/\.\$\^\=\*\;\:\&\?\(\)\[\]\{\}\"\'\>\<\,\@\!\%\`\~\s]$)[^\#\.\$\^\=\*\;\:\&\?\(\)\[\]\{\}\"\'\>\<\,\@\!\%\`\~\s]*$/
 
 export default {
   props: {
@@ -266,6 +293,8 @@ export default {
   },
   data () {
     return {
+      dialogProgress: false,
+      isLoading: false,
       isPublishStartShown: false,
       isPublishEndShown: false,
       pageSelectorShown: false,
@@ -275,11 +304,16 @@ export default {
       newTagSearch: '',
       currentTab: 0,
       cm: null,
-      rules: {
-          required: value => !!value || 'This field is required.',
-          path: value => {
-            return filenamePattern.test(value) || 'Invalid path. Please ensure it does not contain special characters, or begin/end in a slash or hashtag string.'
-          }
+      initContentParsed: '',
+      savedState: {
+        description: '',
+        isPublished: false,
+        publishEndDate: '',
+        publishStartDate: '',
+        tags: '',
+        title: '',
+        css: '',
+        js: ''
       }
     }
   },
@@ -301,8 +335,31 @@ export default {
     scriptCss: sync('page/scriptCss'),
     hasScriptPermission: get('page/effectivePermissions@pages.script'),
     hasStylePermission: get('page/effectivePermissions@pages.style'),
+    isAdmin: get('user/permissions'),
+
     pageSelectorMode () {
       return (this.mode === 'create') ? 'create' : 'move'
+    },
+    hasAdminRight () {
+      return (this.isAdmin.includes('manage:system') || this.isAdmin.includes('manage:navigation'))
+    },
+    hasAdministratorRight () {
+      return !!this.isAdmin.includes('manage:system')
+    },
+    isDirty () {
+      return _.some([
+        this.initContentParsed !== this.$store.get('editor/content'),
+        this.locale !== this.$store.get('page/locale'),
+        this.path !== this.$store.get('page/path'),
+        this.savedState.title !== this.$store.get('page/title'),
+        this.savedState.description !== this.$store.get('page/description'),
+        this.savedState.tags !== this.$store.get('page/tags'),
+        this.savedState.isPublished !== this.$store.get('page/isPublished'),
+        this.savedState.publishStartDate !== this.$store.get('page/publishStartDate'),
+        this.savedState.publishEndDate !== this.$store.get('page/publishEndDate'),
+        this.savedState.css !== this.$store.get('page/scriptCss'),
+        this.savedState.js !== this.$store.get('page/scriptJs')
+      ], Boolean)
     }
   },
   watch: {
@@ -342,6 +399,10 @@ export default {
         })
       }
     }
+  },
+  mounted() {
+    this.initContentParsed = this.$store.get('editor/content')
+    this.setCurrentSavedState()
   },
   methods: {
     removeTag (tag) {
@@ -392,6 +453,170 @@ export default {
         this.cm.refresh()
         this.cm.focus()
       })
+    },
+    showProgressDialog(textKey) {
+      this.dialogProgress = true
+    },
+    hideProgressDialog() {
+      this.dialogProgress = false
+    },
+    async reviewedEmailbyAdmin (status, context) {
+      try {
+        const resp = await this.$apollo.mutate({
+          mutation: mailreviewedEmailbyAdminMutation,
+          variables: {
+            pageId: this.$store.get('page/id'),
+            versionId: 0,
+            isApproved: status,
+            context: context
+          },
+          watchLoading (isLoading) {
+            this.$store.commit(`loading${isLoading ? 'Start' : 'Stop'}`, 'admin-mail-test')
+          }
+        })
+        if (!_.get(resp, 'data.mail.reviewedEmailbyAdmin.responseResult.succeeded', false)) {
+          throw new Error(_.get(resp, 'data.mail.reviewedEmailbyAdmin.responseResult.message', 'An unexpected error occurred.'))
+        }
+      } catch (err) {
+        this.$store.commit('pushGraphError', err)
+      }
+    },
+    async approve() {
+      this.$store.set('page/isPublished', true)
+      await this.save()
+    },
+    async reject() {
+      this.$store.set('page/isPublished', false)
+      await this.save()
+    },
+    async save({ rethrow = false, overwrite = false } = {}) {
+      // this.showProgressDialog('saving')
+      this.isLoading = true
+      let isPublishedStatus = this.$store.get('page/isPublished')
+      let isSubmitStatus = false
+      if (isPublishedStatus === true) {
+        isSubmitStatus = true
+      } else {
+        isSubmitStatus = this.$store.get('page/isSubmit')
+      }
+
+      try {
+        let resp = await this.$apollo.mutate({
+          mutation: gql`
+              mutation (
+                $id: Int!
+                $content: String
+                $description: String
+                $editor: String
+                $isPrivate: Boolean
+                $isPublished: Boolean
+                $isSubmit: Boolean
+                $locale: String
+                $path: String
+                $publishEndDate: Date
+                $publishStartDate: Date
+                $scriptCss: String
+                $scriptJs: String
+                $tags: [String]
+                $title: String
+              ) {
+                pages {
+                  update(
+                    id: $id
+                    content: $content
+                    description: $description
+                    editor: $editor
+                    isPrivate: $isPrivate
+                    isPublished: $isPublished
+                    isSubmit: $isSubmit
+                    locale: $locale
+                    path: $path
+                    publishEndDate: $publishEndDate
+                    publishStartDate: $publishStartDate
+                    scriptCss: $scriptCss
+                    scriptJs: $scriptJs
+                    tags: $tags
+                    title: $title
+                  ) {
+                    responseResult {
+                      succeeded
+                      errorCode
+                      slug
+                      message
+                    }
+                    page {
+                      updatedAt
+                    }
+                  }
+                }
+              }
+            `,
+          variables: {
+            id: this.$store.get('page/id'),
+            content: this.$store.get('editor/content'),
+            description: this.$store.get('page/description'),
+            editor: this.$store.get('editor/editorKey'),
+            locale: this.$store.get('page/locale'),
+            isPrivate: false,
+            isPublished: isPublishedStatus,
+            isSubmit: isSubmitStatus,
+            path: this.$store.get('page/path'),
+            publishEndDate: this.$store.get('page/publishEndDate') || '',
+            publishStartDate: this.$store.get('page/publishStartDate') || '',
+            scriptCss: this.$store.get('page/scriptCss'),
+            scriptJs: this.$store.get('page/scriptJs'),
+            tags: this.$store.get('page/tags'),
+            title: this.$store.get('page/title')
+          }
+        })
+        resp = _.get(resp, 'data.pages.update', {})
+        if (_.get(resp, 'responseResult.succeeded')) {
+          let status = ''
+          if (this.isPublished) {
+            status = 'approved'
+            await this.reviewedEmailbyAdmin('approve', 'pageCreateReview')
+          } else {
+            status = 'rejected'
+            await this.reviewedEmailbyAdmin('reject', 'pageCreateReview')
+          }
+          this.$store.commit('showNotification', {
+            message: `Page create request is ${status}`,
+            style: 'success',
+            icon: 'check'
+          })
+          setTimeout(() => {
+            this.isLoading = false
+            window.location.assign('/' + this.$store.get('page/locale') + '/' + this.$store.get('page/path'))
+          }, 2000)
+        } else {
+          throw new Error(_.get(resp, 'responseResult.message'))
+        }
+      } catch (err) {
+        this.isLoading = false
+        this.$store.commit('showNotification', {
+          message: err.message,
+          style: 'error',
+          icon: 'warning'
+        })
+        if (rethrow === true) {
+          this.hideProgressDialog()
+          throw err
+        }
+      }
+      this.hideProgressDialog()
+    },
+    setCurrentSavedState () {
+      this.savedState = {
+        description: this.$store.get('page/description'),
+        isPublished: this.$store.get('page/isPublished'),
+        isSubmit: this.$store.get('page/isSubmit'),
+        publishEndDate: this.$store.get('page/publishEndDate') || '',
+        publishStartDate: this.$store.get('page/publishStartDate') || '',
+        tags: this.$store.get('page/tags'),
+        title: this.$store.get('page/title'),
+        css: this.$store.get('page/scriptCss'),
+        js: this.$store.get('page/scriptJs')
+      }
     }
   },
   apollo: {

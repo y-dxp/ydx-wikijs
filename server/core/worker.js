@@ -14,11 +14,6 @@ WIKI.logger = require('./logger').init('JOB')
 const args = require('yargs').argv
 
 ;(async () => {
-  try {
-    await require(`../jobs/${args.job}`)(args.data)
-    process.exit(0)
-  } catch (e) {
-    await new Promise(resolve => process.stderr.write(e.message, resolve))
-    process.exit(1)
-  }
+  await require(`../jobs/${args.job}`)(args.data)
+  process.exit(0)
 })()

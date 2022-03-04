@@ -7,10 +7,10 @@
       v-icon(color='grey', small) mdi-email-outline
       v-list-item-title.px-3 Email
     v-list-item(@click='openSocialPop(`https://www.facebook.com/sharer/sharer.php?u=` + encodeURIComponent(url) + `&title=` + encodeURIComponent(title) + `&description=` + encodeURIComponent(description))')
-      v-icon(color='grey', small) mdi-facebook
+      v-icon(color='grey', small) mdi-facebook-box
       v-list-item-title.px-3 Facebook
     v-list-item(@click='openSocialPop(`https://www.linkedin.com/shareArticle?mini=true&url=` + encodeURIComponent(url) + `&title=` + encodeURIComponent(title) + `&summary=` + encodeURIComponent(description))')
-      v-icon(color='grey', small) mdi-linkedin
+      v-icon(color='grey', small) mdi-linkedin-box
       v-list-item-title.px-3 LinkedIn
     v-list-item(@click='openSocialPop(`https://www.reddit.com/submit?url=` + encodeURIComponent(url) + `&title=` + encodeURIComponent(title))')
       v-icon(color='grey', small) mdi-reddit

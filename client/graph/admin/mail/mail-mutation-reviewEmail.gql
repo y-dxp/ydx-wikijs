@@ -1,0 +1,12 @@
+mutation ($pageId: Int!, $versionId: Int!, $context: String!) {
+  mail {
+    reviewEmail(pageId: $pageId, versionId: $versionId, context: $context) {
+      responseResult {
+        succeeded
+        errorCode
+        slug
+        message
+      }
+    }
+  }
+}

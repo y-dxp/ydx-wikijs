@@ -12,8 +12,7 @@ class Job {
     schedule = 'P1D',
     repeat = false,
     worker = false
-  }, queue) {
-    this.queue = queue
+  }) {
     this.finished = Promise.resolve()
     this.name = name
     this.immediate = immediate
@@ -28,11 +27,10 @@ class Job {
    * @param {Object} data Job Data
    */
   start(data) {
-    this.queue.jobs.push(this)
     if (this.immediate) {
       this.invoke(data)
     } else {
-      this.enqueue(data)
+      this.queue(data)
     }
   }
 
@@ -41,7 +39,7 @@ class Job {
    *
    * @param {Object} data Job Data
    */
-  enqueue(data) {
+  queue(data) {
     this.timeout = setTimeout(this.invoke.bind(this), this.schedule.asMilliseconds(), data)
   }
 
@@ -57,22 +55,14 @@ class Job {
           `--job=${this.name}`,
           `--data=${data}`
         ], {
-          cwd: WIKI.ROOTPATH,
-          stdio: ['inherit', 'inherit', 'pipe', 'ipc']
+          cwd: WIKI.ROOTPATH
         })
-        const stderr = [];
-        proc.stderr.on('data', chunk => stderr.push(chunk))
         this.finished = new Promise((resolve, reject) => {
           proc.on('exit', (code, signal) => {
-            const data = Buffer.concat(stderr).toString()
             if (code === 0) {
-              resolve(data)
+              resolve()
             } else {
-              const err = new Error(`Error when running job ${this.name}: ${data}`)
-              err.exitSignal = signal
-              err.exitCode = code
-              err.stderr = data
-              reject(err)
+              reject(signal)
             }
             proc.kill()
           })
@@ -84,20 +74,16 @@ class Job {
     } catch (err) {
       WIKI.logger.warn(err)
     }
-    if (this.repeat && this.queue.jobs.includes(this)) {
-      this.enqueue(data)
-    } else {
-      this.stop().catch(() => {})
+    if (this.repeat) {
+      this.queue(data)
     }
   }
 
   /**
    * Stop any future job invocation from occuring
    */
-  async stop() {
+  stop() {
     clearTimeout(this.timeout)
-    this.queue.jobs = this.queue.jobs.filter(x => x !== this)
-    return this.finished
   }
 }
 
@@ -124,11 +110,16 @@ module.exports = {
     })
   },
   registerJob(opts, data) {
-    const job = new Job(opts, this)
+    const job = new Job(opts)
     job.start(data)
+    if (job.repeat) {
+      this.jobs.push(job)
+    }
     return job
   },
-  async stop() {
-    return Promise.all(this.jobs.map(job => job.stop()))
+  stop() {
+    this.jobs.forEach(job => {
+      job.stop()
+    })
   }
 }

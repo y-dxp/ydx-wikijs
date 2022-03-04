@@ -14,7 +14,7 @@
       .search-results-none(v-else-if='!searchIsLoading && (!results || results.length < 1)')
         img(src='/_assets/svg/icon-no-results.svg', alt='No Results')
         .subheading {{$t('common:header.searchNoResult')}}
-      template(v-if='results && results.length > 0')
+      template(v-if='results && results.length > 0 && (search && search.length > 1)')
         v-subheader.white--text {{$t('common:header.searchResultsCount', { total: response.totalHits })}}
         v-list.search-results-items.radius-7.py-0(two-line, dense)
           template(v-for='(item, idx) of results')
@@ -35,7 +35,7 @@
           :length='paginationLength'
           circle
         )
-      template(v-if='suggestions && suggestions.length > 0')
+      template(v-if='suggestions && suggestions.length > 0 && (search && search.length > 1)')
         v-subheader.white--text.mt-3 {{$t('common:header.searchDidYouMean')}}
         v-list.search-results-suggestions.radius-7(dense, dark)
           template(v-for='(term, idx) of suggestions')

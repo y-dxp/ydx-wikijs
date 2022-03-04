@@ -11,7 +11,7 @@
           v-btn.ml-4(depressed, color='blue darken-1', @click='goLive') Return to Live Version
       v-container(fluid, grid-list-xl)
         v-layout(row, wrap)
-          v-flex(xs12, md4)
+          v-flex(xs12, md4, v-if="!isReviewMode")
             v-chip.my-0.ml-6(
               label
               small
@@ -44,10 +44,10 @@
                         v-btn.mr-2.radius-4(icon, v-on='on', small, tile): v-icon mdi-dots-horizontal
                       v-list(dense, nav).history-promptmenu
                         v-list-item(@click='setDiffSource(ph.versionId)', :disabled='(ph.versionId >= diffTarget && diffTarget !== 0) || ph.versionId === 0')
-                          v-list-item-avatar(size='24'): v-avatar A
+                          v-list-item-avatar(size='24'): v-avatar.small-text A
                           v-list-item-title Set as Differencing Source
                         v-list-item(@click='setDiffTarget(ph.versionId)', :disabled='ph.versionId <= diffSource && ph.versionId !== 0')
-                          v-list-item-avatar(size='24'): v-avatar B
+                          v-list-item-avatar(size='24'): v-avatar.small-text B
                           v-list-item-title Set as Differencing Target
                         v-list-item(@click='viewSource(ph.versionId)')
                           v-list-item-avatar(size='24'): v-icon mdi-code-tags
@@ -96,7 +96,7 @@
               :class='$vuetify.theme.dark ? `grey--text text--lighten-2` : `grey--text text--darken-2`'
               ) End of history trail
 
-          v-flex(xs12, md8)
+          v-flex(xs12, md8, v-if="!isReviewMode")
             v-card.radius-7(:class='$vuetify.breakpoint.mdAndUp ? `mt-8` : ``')
               v-card-text
                 v-card.grey.radius-7(flat, :class='$vuetify.theme.dark ? `darken-2` : `lighten-4`')
@@ -111,6 +111,28 @@
                         .overline View Mode
                 v-card.mt-3(light, v-html='diffHTML', flat)
 
+          v-card-actions(v-if="isReviewMode").btn-class
+            v-spacer
+            v-btn(v-if="!isLoading",color='green darken-2', dark, @click='reloadPage', :loading='restoreLoading')
+              v-icon(left) mdi-reload
+            v-btn(v-if="!hasConflict && !isLoading",color='green darken-2', dark, @click='editPage', :loading='restoreLoading') Edit
+            v-btn(v-if="hasConflict && !isLoading",color='green darken-2', dark, @click='editPage', :loading='restoreLoading') Resolve Conflict
+            v-btn(v-if="!hasConflict && !isLoading" color='green darken-2', dark, @click='pageEditReviewConfirm', :loading='restoreLoading') Approve
+            v-btn(v-if="!isLoading" color='pink darken-2', dark, @click='pageEditReviewCancel', :loading='restoreLoading') Reject
+          v-flex(xs12, md12, v-if="isReviewMode")
+            v-card.radius-7(:class='$vuetify.breakpoint.mdAndUp ? `mt-8` : ``')
+              v-card-text
+                v-card.grey.radius-7(flat, :class='$vuetify.theme.dark ? `darken-2` : `lighten-4`')
+                  v-row(no-gutters, align='center')
+                    v-col
+                      v-card-text
+                        .subheading {{target.title}}
+                        .caption {{target.description}}
+                    v-col.text-right.py-3(cols='2', v-if='$vuetify.breakpoint.mdAndUp')
+                      v-btn.mr-3(:color='$vuetify.theme.dark ? `white` : `grey darken-3`', small, dark, outlined, @click='toggleViewMode')
+                        v-icon(left) mdi-eye
+                        .overline View Mode
+                v-card.mt-3(light, v-html='diffHTML', flat)
     v-dialog(v-model='isRestoreConfirmDialogShown', max-width='650', persistent)
       v-card
         .dialog-header.is-orange {{$t('history:restore.confirmTitle')}}
@@ -134,6 +156,7 @@ import * as Diff2Html from 'diff2html'
 import { createPatch } from 'diff'
 import _ from 'lodash'
 import gql from 'graphql-tag'
+import mailreviewedEmailbyAdminMutation from 'gql/admin/mail/mail-mutation-reviewedEmailbyAdmin.gql'
 
 export default {
   i18nOptions: { namespaces: 'history' },
@@ -197,7 +220,8 @@ export default {
         versionId: 0,
         content: '',
         title: '',
-        description: ''
+        description: '',
+        newContent: ''
       },
       target: {
         versionId: 0,
@@ -223,7 +247,11 @@ export default {
         modal: false
       },
       isRestoreConfirmDialogShown: false,
-      restoreLoading: false
+      restoreLoading: false,
+      isReviewMode: true,
+      hasConflict: false,
+      isLoading: true,
+      reviewAuthorId: 0
     }
   },
   computed: {
@@ -251,6 +279,9 @@ export default {
       ]
     },
     diffs () {
+      if (this.isReviewMode) {
+        return createPatch(`/${this.path}`, this.source.content, this.source.newContent)
+      }
       return createPatch(`/${this.path}`, this.source.content, this.target.content)
     },
     diffHTML () {
@@ -302,6 +333,7 @@ export default {
       authorId: this.authorId,
       authorName: this.authorName,
       content: this.liveContent,
+      newContent: '',
       contentType: '',
       createdAt: this.createdAt,
       description: this.description,
@@ -326,9 +358,78 @@ export default {
     }
   },
   methods: {
+    async reviewedEmailbyAdmin (status, context) {
+      try {
+        const resp = await this.$apollo.mutate({
+          mutation: mailreviewedEmailbyAdminMutation,
+          variables: {
+            pageId: this.pageId,
+            versionId: this.source.versionId,
+            isApproved: status,
+            context: context
+          },
+          watchLoading (isLoading) {
+            this.$store.commit(`loading${isLoading ? 'Start' : 'Stop'}`, 'admin-mail-test')
+          }
+        })
+        if (!_.get(resp, 'data.mail.reviewedEmailbyAdmin.responseResult.succeeded', false)) {
+          throw new Error(_.get(resp, 'data.mail.reviewedEmailbyAdmin.responseResult.message', 'An unexpected error occurred.'))
+        }
+      } catch (err) {
+        this.$store.commit('pushGraphError', err)
+      }
+    },
+
     async loadVersion (versionId) {
-      this.$store.commit(`loadingStart`, 'history-version-' + versionId)
-      const resp = await this.$apollo.query({
+      this.isReviewMode = !!window.location.href.includes('/r')
+      let splittedUrl, verId, page, reviewPage
+      if (this.isReviewMode) {
+        splittedUrl = window.location.href.split('/')
+        verId = splittedUrl[splittedUrl.length - 1]
+        versionId = Number(verId)
+      }
+
+      if (this.isReviewMode) {
+        const resp = await this.$apollo.query({
+          query: gql`
+        query($id: Int!) {
+          pages {
+            single(id:$id) {
+              id
+              path
+              hash
+              title
+              description
+              isPrivate
+              isPublished
+              isSubmit
+              privateNS
+              publishStartDate
+              publishEndDate
+              contentType
+              createdAt
+              updatedAt
+              editor
+              locale
+              authorId
+              authorName
+              authorEmail
+              creatorId
+              creatorName
+              creatorEmail
+              content
+            }
+          }
+        }`,
+          fetchPolicy: 'network-only',
+          variables: {
+            id: this.pageId
+          }
+        })
+        page = _.get(resp, 'data.pages.single', null)
+      }
+
+      const reviewPageResp = await this.$apollo.query({
         query: gql`
           query ($pageId: Int!, $versionId: Int!) {
             pages {
@@ -337,6 +438,7 @@ export default {
                 authorId
                 authorName
                 content
+                newContent
                 contentType
                 createdAt
                 versionDate
@@ -361,13 +463,32 @@ export default {
           pageId: this.pageId
         }
       })
+
       this.$store.commit(`loadingStop`, 'history-version-' + versionId)
-      const page = _.get(resp, 'data.pages.version', null)
-      if (page) {
-        this.cache.push(page)
-        return page
+      reviewPage = _.get(reviewPageResp, 'data.pages.version', null)
+      if (this.isReviewMode) {
+        if (reviewPage && page) {
+          this.reviewAuthorId = reviewPage.authorId
+          if (reviewPage.content !== page.content) {
+            this.hasConflict = true
+          }
+          this.isLoading = false
+          reviewPage.content = page.content
+          this.cache.push(reviewPage)
+          return reviewPage
+        } else {
+          this.isLoading = false
+          return { content: '' }
+        }
       } else {
-        return { content: '' }
+        if (reviewPage) {
+          this.isLoading = false
+          this.cache.push(reviewPage)
+          return reviewPage
+        } else {
+          this.isLoading = false
+          return { content: '' }
+        }
       }
     },
     viewSource (versionId) {
@@ -407,6 +528,7 @@ export default {
             pageId: this.pageId
           }
         })
+
         if (_.get(resp, 'data.pages.restore.responseResult.succeeded', false) === true) {
           this.$store.commit('showNotification', {
             style: 'success',
@@ -419,6 +541,172 @@ export default {
           }, 1000)
         } else {
           throw new Error(_.get(resp, 'data.pages.restore.responseResult.message', 'An unexpected error occurred'))
+        }
+      } catch (err) {
+        this.$store.commit('showNotification', {
+          style: 'red',
+          message: err.message,
+          icon: 'alert'
+        })
+      }
+      this.$store.commit(`loadingStop`, 'history-restore')
+      this.restoreLoading = false
+    },
+    async pageEditReviewConfirm () {
+      this.restoreLoading = true
+      this.$store.commit(`loadingStart`, 'history-restore')
+      try {
+        const resp = await this.$apollo.mutate({
+          mutation: gql`
+            mutation ($id: Int!, $content: String, $description: String, $editor: String, $isPrivate: Boolean, $isPublished: Boolean, $locale: String, $path: String, $publishEndDate: Date, $publishStartDate: Date, $scriptCss: String, $scriptJs: String, $tags: [String], $title: String) {
+              pages {
+                update(id: $id, content: $content, description: $description, editor: $editor, isPrivate: $isPrivate, isPublished: $isPublished, locale: $locale, path: $path, publishEndDate: $publishEndDate, publishStartDate: $publishStartDate, scriptCss: $scriptCss, scriptJs: $scriptJs, tags: $tags, title: $title) {
+                  responseResult {
+                    succeeded
+                    errorCode
+                    slug
+                    message
+                    __typename
+                  }
+                  page {
+                    updatedAt
+                    __typename
+                  }
+                  __typename
+                }
+                __typename
+              }
+            }
+          `,
+          variables: {
+            content: this.source.newContent,
+            description: this.source.description,
+            editor: this.source.editor,
+            isPrivate: this.source.isPrivate,
+            isPublished: this.source.isPublished,
+            locale: this.source.locale,
+            path: this.source.path,
+            publishEndDate: this.source.publishEndDate,
+            publishStartDate: this.source.publishStartDate,
+            tags: this.source.tags,
+            title: this.source.title,
+            id: this.pageId
+          }
+        })
+
+        let historyResp = await this.$apollo.mutate({
+          mutation: gql`
+              mutation (
+                $id: Int!
+                $isReviewed: Boolean
+                $isApproved: Boolean
+              ) {
+                pages {
+                  updateHistory(
+                    id: $id
+                    isReviewed: $isReviewed
+                    isApproved: $isApproved
+                  ) {
+                    responseResult {
+                      succeeded
+                      errorCode
+                      slug
+                      message
+                    }
+                    page {
+                      updatedAt
+                    }
+                  }
+                }
+              }
+            `,
+          variables: {
+            id: this.source.versionId,
+            isReviewed: true,
+            isApproved: true
+          }
+        })
+
+        if (_.get(resp, 'data.pages.update.responseResult.succeeded', false) === true) {
+        } else {
+          throw new Error(_.get(resp, 'data.pages.update.responseResult.message', 'An unexpected error occurred'))
+        }
+
+        if (_.get(historyResp, 'data.pages.updateHistory.responseResult.succeeded', false) === true) {
+          this.$store.commit('showNotification', {
+            style: 'success',
+            message: 'Page edit request is approved.',
+            icon: 'check'
+          })
+
+          await this.reviewedEmailbyAdmin('approve', 'pageEditReview')
+          setTimeout(() => {
+            this.isRestoreConfirmDialogShown = false
+            window.location.assign(`/a/reviews`)
+          }, 2000)
+        } else {
+          throw new Error(_.get(historyResp, 'data.pages.updateHistory.responseResult.message', 'An unexpected error occurred'))
+        }
+      } catch (err) {
+        this.$store.commit('showNotification', {
+          style: 'red',
+          message: err.message,
+          icon: 'alert'
+        })
+      }
+      this.$store.commit(`loadingStop`, 'history-restore')
+      this.restoreLoading = false
+    },
+    async pageEditReviewCancel () {
+      this.restoreLoading = true
+      this.$store.commit(`loadingStart`, 'history-restore')
+      try {
+        let resp = await this.$apollo.mutate({
+          mutation: gql`
+              mutation (
+                $id: Int!
+                $isReviewed: Boolean
+                $isApproved: Boolean
+              ) {
+                pages {
+                  updateHistory(
+                    id: $id
+                    isReviewed: $isReviewed
+                    isApproved: $isApproved
+                  ) {
+                    responseResult {
+                      succeeded
+                      errorCode
+                      slug
+                      message
+                    }
+                    page {
+                      updatedAt
+                    }
+                  }
+                }
+              }
+            `,
+          variables: {
+            id: this.source.versionId,
+            isReviewed: true,
+            isApproved: false
+          }
+        })
+
+        if (_.get(resp, 'data.pages.updateHistory.responseResult.succeeded', false) === true) {
+          this.$store.commit('showNotification', {
+            style: 'success',
+            message: 'Page edit request is rejected.',
+            icon: 'check'
+          })
+          await this.reviewedEmailbyAdmin('reject', 'pageEditReview')
+          setTimeout(() => {
+            this.isRestoreConfirmDialogShown = false
+            window.location.assign(`/a/reviews`)
+          }, 2000)
+        } else {
+          throw new Error(_.get(resp, 'data.pages.updateHistory.responseResult.message', 'An unexpected error occurred'))
         }
       } catch (err) {
         this.$store.commit('showNotification', {
@@ -515,6 +803,12 @@ export default {
         default:
           return this.$vuetify.theme.dark ? 'grey darken-3' : 'grey lighten-4'
       }
+    },
+    editPage () {
+      window.open(`/e/en/${this.path}?id=${this.reviewAuthorId}`)
+    },
+    reloadPage () {
+      location.reload()
     }
   },
   apollo: {
@@ -572,6 +866,14 @@ export default {
   .d2h-file-header {
     display: none;
   }
+}
+
+.btn-class {
+  padding:25px 0px 7px 0px;
+  margin-left: 75%;
+}
+.small-text {
+  min-width: 24px !important;
 }
 
 </style>

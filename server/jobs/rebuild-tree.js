@@ -2,7 +2,7 @@ const _ = require('lodash')
 
 /* global WIKI */
 
-module.exports = async (pageId) => {
+module.exports = async(pageId) => {
   WIKI.logger.info(`Rebuilding page tree...`)
 
   try {
@@ -10,7 +10,7 @@ module.exports = async (pageId) => {
     await WIKI.configSvc.loadFromDb()
     await WIKI.configSvc.applyFlags()
 
-    const pages = await WIKI.models.pages.query().select('id', 'path', 'localeCode', 'title', 'isPrivate', 'privateNS').orderBy(['localeCode', 'path'])
+    const pages = await WIKI.models.pages.query().select('id', 'path', 'localeCode', 'title', 'isPrivate', 'privateNS', 'isPublished', 'isSubmit', 'creatorId').orderBy(['localeCode', 'path'])
     let tree = []
     let pik = 0
 
@@ -41,7 +41,10 @@ module.exports = async (pageId) => {
             privateNS: !isFolder ? page.privateNS : null,
             parent: parentId,
             pageId: isFolder ? null : page.id,
-            ancestors: JSON.stringify(ancestors)
+            ancestors: JSON.stringify(ancestors),
+            isPublished: page.isPublished,
+            isSubmit: page.isSubmit,
+            creatorId: page.creatorId
           })
           parentId = pik
         } else if (isFolder && !found.isFolder) {
@@ -74,7 +77,5 @@ module.exports = async (pageId) => {
   } catch (err) {
     WIKI.logger.error(`Rebuilding page tree: [ FAILED ]`)
     WIKI.logger.error(err.message)
-    // exit process with error code
-    throw err
   }
 }

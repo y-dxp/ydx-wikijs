@@ -17,6 +17,18 @@
           .overline.amber--text.mr-3 Conflict
           status-indicator(intermediary, pulse)
         v-btn.animated.fadeInDown(
+          v-if='authorId === undefined'
+          :disabled='(isSubmit === true || mode === "create" || isDirty)'
+          text
+          color='red'
+          @click.exact='submitForReview'
+          :class='{ "is-icon": $vuetify.breakpoint.mdAndDown }'
+          )
+          v-icon(color='red', :left='$vuetify.breakpoint.lgAndUp') mdi-check
+          span.grey--text(v-if='$vuetify.breakpoint.lgAndUp') Submit
+          //- span.white--text(v-else-if='$vuetify.breakpoint.lgAndUp') {{ mode === 'create' ? $t('common:actions.create') : $t('common:actions.save') }}
+        v-btn.animated.fadeInDown(
+          v-if='authorId === undefined'
           text
           color='green'
           @click.exact='save'
@@ -26,7 +38,17 @@
           v-icon(color='green', :left='$vuetify.breakpoint.lgAndUp') mdi-check
           span.grey--text(v-if='$vuetify.breakpoint.lgAndUp && mode !== `create` && !isDirty') {{ $t('editor:save.saved') }}
           span.white--text(v-else-if='$vuetify.breakpoint.lgAndUp') {{ mode === 'create' ? $t('common:actions.create') : $t('common:actions.save') }}
+        v-btn.animated.fadeInDown.wait-p2s(
+          v-if='authorId !== undefined'
+          text
+          color='red'
+          :class='{ "is-icon": $vuetify.breakpoint.mdAndDown }'
+          @click='updateHistory'
+          )
+          v-icon(color='green', :left='$vuetify.breakpoint.lgAndUp') mdi-check
+          span.white--text(v-if='$vuetify.breakpoint.lgAndUp') Update
         v-btn.animated.fadeInDown.wait-p1s(
+          v-if='authorId === undefined'
           text
           color='blue'
           @click='openPropsModal'
@@ -35,11 +57,20 @@
           v-icon(color='blue', :left='$vuetify.breakpoint.lgAndUp') mdi-tag-text-outline
           span.white--text(v-if='$vuetify.breakpoint.lgAndUp') {{ $t('common:actions.page') }}
         v-btn.animated.fadeInDown.wait-p2s(
-          v-if='!welcomeMode'
+          v-if='!welcomeMode && authorId === undefined'
           text
           color='red'
           :class='{ "is-icon": $vuetify.breakpoint.mdAndDown }'
           @click='exit'
+          )
+          v-icon(color='red', :left='$vuetify.breakpoint.lgAndUp') mdi-close
+          span.white--text(v-if='$vuetify.breakpoint.lgAndUp') {{ $t('common:actions.close') }}
+        v-btn.animated.fadeInDown.wait-p2s(
+          v-if='!welcomeMode && authorId !== undefined'
+          text
+          color='red'
+          :class='{ "is-icon": $vuetify.breakpoint.mdAndDown }'
+          @click='updateExit'
           )
           v-icon(color='red', :left='$vuetify.breakpoint.lgAndUp') mdi-close
           span.white--text(v-if='$vuetify.breakpoint.lgAndUp') {{ $t('common:actions.close') }}
@@ -62,7 +93,7 @@ import { get, sync } from 'vuex-pathify'
 import { AtomSpinner } from 'epic-spinners'
 import { Base64 } from 'js-base64'
 import { StatusIndicator } from 'vue-status-indicator'
-
+import mailreviewEmailMutation from 'gql/admin/mail/mail-mutation-reviewEmail.gql'
 import editorStore from '../store/editor'
 
 /* global WIKI */
@@ -110,7 +141,7 @@ export default {
     },
     isPublished: {
       type: Boolean,
-      default: true
+      default: false
     },
     scriptCss: {
       type: String,
@@ -155,6 +186,7 @@ export default {
   },
   data() {
     return {
+      isSubmit: false,
       isSaving: false,
       isConflict: false,
       dialogProps: false,
@@ -172,7 +204,9 @@ export default {
         title: '',
         css: '',
         js: ''
-      }
+      },
+      lastContent: '',
+      authorId: undefined
     }
   },
   computed: {
@@ -227,6 +261,11 @@ export default {
     this.$store.set('page/mode', 'edit')
 
     this.setCurrentSavedState()
+    if (this.pageId !== 0) {
+      setTimeout(() => {
+        this.getSinglePage()
+      }, 100)
+    }
 
     this.checkoutDateActive = this.checkoutDate
 
@@ -235,6 +274,12 @@ export default {
     }
   },
   mounted() {
+    const params = new URLSearchParams(window.location.search)
+
+    if (params.get('id')) {
+      this.authorId = params.get('id')
+    }
+
     this.$store.set('editor/mode', this.initMode || 'create')
 
     this.initContentParsed = this.initContent ? Base64.decode(this.initContent) : ''
@@ -275,6 +320,158 @@ export default {
     openConflict() {
       this.$root.$emit('saveConflict')
     },
+    async submitForReview({ rethrow = false, overwrite = false } = {}) {
+      this.isSubmit = true
+      this.$store.set('page/isSubmit', true)
+      this.showProgressDialog('Please wait...')
+      await this.reviewEmail('pageSubmitForReview')
+      const saveTimeoutHandle = setTimeout(() => {
+        throw new Error('Submit operation timed out.')
+      }, 30000)
+
+      try {
+        // --------------------------------------------
+        // -> UPDATE EXISTING PAGE with isSubmit flag
+        // --------------------------------------------
+
+        let resp = await this.$apollo.mutate({
+          mutation: gql`
+              mutation (
+                $id: Int!
+                $content: String
+                $description: String
+                $editor: String
+                $isPrivate: Boolean
+                $isPublished: Boolean
+                $isSubmit: Boolean
+                $locale: String
+                $path: String
+                $publishEndDate: Date
+                $publishStartDate: Date
+                $scriptCss: String
+                $scriptJs: String
+                $tags: [String]
+                $title: String
+              ) {
+                pages {
+                  update(
+                    id: $id
+                    content: $content
+                    description: $description
+                    editor: $editor
+                    isPrivate: $isPrivate
+                    isPublished: $isPublished
+                    isSubmit: $isSubmit
+                    locale: $locale
+                    path: $path
+                    publishEndDate: $publishEndDate
+                    publishStartDate: $publishStartDate
+                    scriptCss: $scriptCss
+                    scriptJs: $scriptJs
+                    tags: $tags
+                    title: $title
+                  ) {
+                    responseResult {
+                      succeeded
+                      errorCode
+                      slug
+                      message
+                    }
+                    page {
+                      updatedAt
+                    }
+                  }
+                }
+              }
+            `,
+          variables: {
+            id: this.$store.get('page/id'),
+            content: this.$store.get('editor/content'),
+            description: this.$store.get('page/description'),
+            editor: this.$store.get('editor/editorKey'),
+            locale: this.$store.get('page/locale'),
+            isPrivate: false,
+            isPublished: this.$store.get('page/isPublished'),
+            isSubmit: this.$store.get('page/isSubmit'),
+            path: this.$store.get('page/path'),
+            publishEndDate: this.$store.get('page/publishEndDate') || '',
+            publishStartDate: this.$store.get('page/publishStartDate') || '',
+            scriptCss: this.$store.get('page/scriptCss'),
+            scriptJs: this.$store.get('page/scriptJs'),
+            tags: this.$store.get('page/tags'),
+            title: this.$store.get('page/title')
+          }
+        })
+        resp = _.get(resp, 'data.pages.update', {})
+        if (_.get(resp, 'responseResult.succeeded')) {
+          this.checkoutDateActive = _.get(resp, 'page.updatedAt', this.checkoutDateActive)
+          this.$store.commit('showNotification', {
+            message: 'Page creation request is submitted for review.',
+            style: 'success',
+            icon: 'check'
+          })
+          if (this.locale !== this.$store.get('page/locale') || this.path !== this.$store.get('page/path')) {
+            _.delay(() => {
+              window.location.replace(`/e/${this.$store.get('page/locale')}/${this.$store.get('page/path')}`)
+            }, 1000)
+          }
+        } else {
+          throw new Error(_.get(resp, 'responseResult.message'))
+        }
+
+        this.initContentParsed = this.$store.get('editor/content')
+        this.setCurrentSavedState()
+      } catch (err) {
+        this.$store.set('page/isSubmit', false)
+        this.isSubmit = false
+        this.$store.commit('showNotification', {
+          message: err.message,
+          style: 'error',
+          icon: 'warning'
+        })
+        if (rethrow === true) {
+          clearTimeout(saveTimeoutHandle)
+          this.isSaving = false
+          this.hideProgressDialog()
+          throw err
+        }
+      }
+      clearTimeout(saveTimeoutHandle)
+      this.isSaving = false
+      this.hideProgressDialog()
+    },
+    async reviewEmail (context) {
+      let variables
+      if (this.source && this.source.versionId) {
+        variables = {
+          pageId: this.pageId,
+          versionId: this.source.versionId,
+          context: context
+        }
+      } else {
+        variables = {
+          pageId: this.pageId,
+          versionId: 1,
+          context: context
+        }
+      }
+
+      try {
+        const resp = await this.$apollo.mutate({
+          mutation: mailreviewEmailMutation,
+          variables: variables,
+          watchLoading (isLoading) {
+            this.$store.commit(`loading${isLoading ? 'Start' : 'Stop'}`, 'admin-mail-test')
+          }
+        })
+        if (!_.get(resp, 'data.mail.reviewEmail.responseResult.succeeded', false)) {
+          throw new Error(_.get(resp, 'data.mail.reviewEmail.responseResult.message', 'An unexpected error occurred.'))
+        }
+      } catch (err) {
+        this.$store.commit('pushGraphError', err)
+      }
+    },
+
     async save({ rethrow = false, overwrite = false } = {}) {
       this.showProgressDialog('saving')
       this.isSaving = true
@@ -288,7 +485,18 @@ export default {
           // --------------------------------------------
           // -> CREATE PAGE
           // --------------------------------------------
+          // let hasPageAccess = this.$store.get('user/permissions').includes('manage:system') || this.$store.get('user/permissions').includes('manage:navigation')
+          let isPublishedStatus = false
+          let isSubmitStatus = false
+          // if (hasPageAccess) {
+          //   isPublishedStatus = true
+          //   isSubmitStatus = true
+          // } else {
+          //   isPublishedStatus = false
+          //   isSubmitStatus = false
+          // }
 
+          // await this.reviewEmail()
           let resp = await this.$apollo.mutate({
             mutation: gql`
               mutation (
@@ -297,6 +505,7 @@ export default {
                 $editor: String!
                 $isPrivate: Boolean!
                 $isPublished: Boolean!
+                $isSubmit: Boolean!
                 $locale: String!
                 $path: String!
                 $publishEndDate: Date
@@ -313,6 +522,7 @@ export default {
                     editor: $editor
                     isPrivate: $isPrivate
                     isPublished: $isPublished
+                    isSubmit: $isSubmit
                     locale: $locale
                     path: $path
                     publishEndDate: $publishEndDate
@@ -342,7 +552,8 @@ export default {
               editor: this.$store.get('editor/editorKey'),
               locale: this.$store.get('page/locale'),
               isPrivate: false,
-              isPublished: this.$store.get('page/isPublished'),
+              isPublished: isPublishedStatus,
+              isSubmit: isSubmitStatus,
               path: this.$store.get('page/path'),
               publishEndDate: this.$store.get('page/publishEndDate') || '',
               publishStartDate: this.$store.get('page/publishStartDate') || '',
@@ -364,7 +575,7 @@ export default {
             this.$store.set('editor/id', _.get(resp, 'page.id'))
             this.$store.set('editor/mode', 'update')
             this.exitConfirmed = true
-            window.location.assign(`/${this.$store.get('page/locale')}/${this.$store.get('page/path')}`)
+            window.location.assign(`/e/${this.$store.get('page/locale')}/${this.$store.get('page/path')}`)
           } else {
             throw new Error(_.get(resp, 'responseResult.message'))
           }
@@ -392,6 +603,16 @@ export default {
             throw new Error(this.$t('editor:conflict.warning'))
           }
 
+          let hasPageAccess = this.$store.get('user/permissions').includes('manage:system') || this.$store.get('user/permissions').includes('manage:navigation')
+          let isPublishedStatus = this.$store.get('user/isPublished')
+          let isSubmitStatus = this.$store.get('user/isSubmit')
+          // if (hasPageAccess) {
+          //   isPublishedStatus = true
+          //   isSubmitStatus = true
+          // } else {
+          //   isPublishedStatus = this.$store.get('user/isPublished')
+          //   isSubmitStatus = this.$store.get('user/isSubmit')
+          // }
           let resp = await this.$apollo.mutate({
             mutation: gql`
               mutation (
@@ -401,6 +622,7 @@ export default {
                 $editor: String
                 $isPrivate: Boolean
                 $isPublished: Boolean
+                $isSubmit: Boolean
                 $locale: String
                 $path: String
                 $publishEndDate: Date
@@ -418,6 +640,7 @@ export default {
                     editor: $editor
                     isPrivate: $isPrivate
                     isPublished: $isPublished
+                    isSubmit: $isSubmit
                     locale: $locale
                     path: $path
                     publishEndDate: $publishEndDate
@@ -447,7 +670,8 @@ export default {
               editor: this.$store.get('editor/editorKey'),
               locale: this.$store.get('page/locale'),
               isPrivate: false,
-              isPublished: this.$store.get('page/isPublished'),
+              isPublished: isPublishedStatus,
+              isSubmit: isSubmitStatus,
               path: this.$store.get('page/path'),
               publishEndDate: this.$store.get('page/publishEndDate') || '',
               publishStartDate: this.$store.get('page/publishStartDate') || '',
@@ -461,15 +685,28 @@ export default {
           if (_.get(resp, 'responseResult.succeeded')) {
             this.checkoutDateActive = _.get(resp, 'page.updatedAt', this.checkoutDateActive)
             this.isConflict = false
-            this.$store.commit('showNotification', {
-              message: this.$t('editor:save.updateSuccess'),
-              style: 'success',
-              icon: 'check'
-            })
+            if (this.isPublished === true && !hasPageAccess) {
+              await this.reviewEmail('pageEditSubmitForReview')
+              this.$store.commit('showNotification', {
+                message: 'Page edit request is submitted for review.',
+                style: 'success',
+                icon: 'check'
+              })
+            } else {
+              this.$store.commit('showNotification', {
+                message: 'Page updated successfully.',
+                style: 'success',
+                icon: 'check'
+              })
+              setTimeout(() => {
+                window.location.assign(`/e/${this.$store.get('page/locale')}/${this.$store.get('page/path')}`)
+              }, 1000)
+            }
+
             if (this.locale !== this.$store.get('page/locale') || this.path !== this.$store.get('page/path')) {
               _.delay(() => {
                 window.location.replace(`/e/${this.$store.get('page/locale')}/${this.$store.get('page/path')}`)
-              }, 1000)
+              }, 2000)
             }
           } else {
             throw new Error(_.get(resp, 'responseResult.message'))
@@ -495,6 +732,77 @@ export default {
       this.isSaving = false
       this.hideProgressDialog()
     },
+
+    async updateHistory() {
+      this.showProgressDialog('saving')
+      this.isSaving = true
+
+      const saveTimeoutHandle = setTimeout(() => {
+        throw new Error('Save operation timed out.')
+      }, 30000)
+
+      try {
+        // --------------------------------------------
+        // -> UPDATE EXISTING History
+        // --------------------------------------------
+
+        let resp = await this.$apollo.mutate({
+          mutation: gql`
+              mutation (
+                $pageId: Int!
+                $authorId: Int!
+                $content: String
+                $newContent: String
+              ) {
+                pages {
+                  updateHistoryByReviewer(
+                    pageId: $pageId
+                    authorId: $authorId
+                    content: $content
+                    newContent:$newContent
+                  ) {
+                    responseResult {
+                      succeeded
+                      errorCode
+                      slug
+                      message
+                    }
+                    page {
+                      updatedAt
+                    }
+                  }
+                }
+              }
+            `,
+          variables: {
+            pageId: this.$store.get('page/id'),
+            authorId: parseInt(this.authorId),
+            content: this.lastContent,
+            newContent: this.$store.get('editor/content')
+          }
+        })
+        resp = _.get(resp, 'data.pages.updateHistoryByReviewer', {})
+        if (_.get(resp, 'responseResult.succeeded')) {
+          this.$store.commit('showNotification', {
+            message: 'Review has been updated',
+            style: 'success',
+            icon: 'check'
+          })
+        } else {
+          throw new Error(_.get(resp, 'responseResult.message'))
+        }
+      } catch (err) {
+        this.$store.commit('showNotification', {
+          message: err.message,
+          style: 'error',
+          icon: 'warning'
+        })
+      }
+      clearTimeout(saveTimeoutHandle)
+      this.isSaving = false
+      this.hideProgressDialog()
+    },
+
     async saveAndClose() {
       try {
         if (this.$store.get('editor/mode') === 'create') {
@@ -514,6 +822,9 @@ export default {
         this.exitGo()
       }
     },
+    async updateExit() {
+      this.exitGo()
+    },
     exitGo() {
       this.$store.commit(`loadingStart`, 'editor-close')
       this.currentEditor = ''
@@ -530,12 +841,56 @@ export default {
       this.savedState = {
         description: this.$store.get('page/description'),
         isPublished: this.$store.get('page/isPublished'),
+        isSubmit: this.$store.get('page/isSubmit'),
         publishEndDate: this.$store.get('page/publishEndDate') || '',
         publishStartDate: this.$store.get('page/publishStartDate') || '',
         tags: this.$store.get('page/tags'),
         title: this.$store.get('page/title'),
         css: this.$store.get('page/scriptCss'),
         js: this.$store.get('page/scriptJs')
+      }
+    },
+    async getSinglePage () {
+      const resp = await this.$apollo.query({
+        query: gql`
+        query($id: Int!) {
+          pages {
+            single(id:$id) {
+              id
+              path
+              hash
+              title
+              description
+              isPrivate
+              isPublished
+              isSubmit
+              privateNS
+              publishStartDate
+              publishEndDate
+              contentType
+              createdAt
+              updatedAt
+              editor
+              locale
+              authorId
+              authorName
+              authorEmail
+              creatorId
+              creatorName
+              creatorEmail
+              content
+            }
+          }
+        }`,
+        fetchPolicy: 'network-only',
+        variables: {
+          id: this.$store.get('page/id')
+        }
+      })
+      if (resp && resp.data && resp.data.pages && resp.data.pages.single && resp.data.pages.single.isSubmit) {
+        this.isSubmit = resp.data.pages.single.isSubmit
+        this.lastContent = resp.data.pages.single.content
+        this.$store.set('page/isSubmit', this.isSubmit)
       }
     },
     injectCustomCss: _.debounce(css => {
@@ -574,6 +929,7 @@ export default {
         return this.mode === 'create' || this.isSaving || !this.isDirty
       }
     }
+
   }
 }
 </script>

@@ -77,10 +77,6 @@
     & + h2, & + h3, & + h4, & + h5, & + h6 {
       margin-top: 8px;
     }
-
-    & + hr.footnotes-sep {
-      display: none;
-    }
   }
 
   h1 {
@@ -226,19 +222,6 @@
   .emoji {
     height: 1.25em;
     margin: 0 1px -4px;
-  }
-
-  .text-huge {
-    font-size: 1.8em;
-  }
-  .text-big {
-    font-size: 1.4em;
-  }
-  .text-small {
-    font-size: .85em;
-  }
-  .text-tiny {
-    font-size: .7em;
   }
 
   blockquote {
@@ -521,7 +504,7 @@
     }
   }
 
-  ul:not(.tabset-tabs):not(.contains-task-list) {
+  ul:not(.tabset-tabs) {
     list-style: none;
     > li::before {
       position: absolute;
@@ -600,7 +583,6 @@
 
   .diagram {
     margin-top: 1rem;
-    overflow: auto;
     svg:first-child {
       direction: ltr;
     }
@@ -610,25 +592,21 @@
   // TASK LISTS
   // ---------------------------------
 
-  .contains-task-list {
-    padding-left: 0;
-  }
-
   .task-list-item {
     position: relative;
     list-style-type: none;
 
     &-checkbox[disabled] {
-      width: 1.1rem;
-      height: 1.1rem;
-      top: 2px;
-      position: relative;
-      margin-right: 2px;
+      display: none;
 
-      &::after {
+      & + label {
+        padding-left: 1.5rem;
+      }
+
+      & + label::before {
         position: absolute;
         left: 0;
-        top: 0;
+        top: 2px;
         content: ' ';
         display: block;
         width: 1.1rem;
@@ -647,7 +625,7 @@
         }
       }
 
-      &[checked]::after  {
+      &[checked] + label::before  {
         content: '✓';
       }
     }
@@ -822,38 +800,26 @@
       padding-left: 0;
     }
 
-    > summary {
+    summary {
       border-radius: 7px;
       background-color: mc('grey', '50');
       cursor: pointer;
-      display: list-item;
+      height: 40px;
+      display: flex;
       align-items: center;
-      padding: 0.4rem 1rem;
+      padding: 0 1rem;
       transition: background-color .4s ease;
 
       &:focus {
         outline: none;
         background-color: mc('grey', '100');
       }
-
-      > h1, h2, h3, h4, h5, h6 {
-        width: 95%;
-        display: inline-block;
-
-        &:first-child {
-          margin-top: 0;
-        }
-
-        &:only-child::after {
-          display: none;
-        }
-      }
     }
 
     &[open] {
       padding: 1rem;
 
-      > summary {
+      summary {
         background-color: mc('grey', '100');
         border-bottom: 1px solid mc('grey', '300');
         border-bottom-left-radius: 0;
@@ -866,12 +832,12 @@
       background-color: mc('grey', '900');
       border-color: mc('grey', '700');
 
-      > summary {
+      summary {
         background-color: mc('grey', '900');
         border-color: mc('grey', '700');
       }
 
-      &[open] > summary {
+      &[open] summary {
         background-color: lighten(mc('grey', '900'), 5%);
       }
     }

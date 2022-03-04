@@ -101,8 +101,12 @@ router.get(['/d', '/d/*'], async (req, res, next) => {
  * Create/Edit document
  */
 router.get(['/e', '/e/*'], async (req, res, next) => {
-  const pageArgs = pageHelper.parsePath(req.path, { stripExt: true })
-
+  let pageAuthorId
+  if (!_.isEmpty(req.query)) {
+    pageAuthorId = Number(req.query.id)
+  }
+  let reqPath = req.path
+  const pageArgs = pageHelper.parsePath(reqPath, { stripExt: true })
   if (WIKI.config.lang.namespacing && !pageArgs.explicitLocale) {
     return res.redirect(`/e/${pageArgs.locale}/${pageArgs.path}`)
   }
@@ -155,12 +159,36 @@ router.get(['/e', '/e/*'], async (req, res, next) => {
     if (!_.isEmpty(page.extra.css)) {
       page.extra.css = new CleanCSS({ format: 'beautify' }).minify(page.extra.css).styles
     }
+    let pageHistoryExist
+    if (pageAuthorId !== undefined) {
+      pageHistoryExist = await WIKI.models.pageHistory.query()
+        .where({
+          'pageHistory.pageId': page.id,
+          'pageHistory.authorId': pageAuthorId,
+          'pageHistory.isReviewed': false
+        }).first()
+    } else {
+      pageHistoryExist = await WIKI.models.pageHistory.query()
+        .where({
+          'pageHistory.pageId': page.id,
+          'pageHistory.authorId': req.user.id,
+          'pageHistory.isReviewed': false
+        }).first()
+    }
 
-    _.set(res.locals, 'pageMeta.title', `Edit ${page.title}`)
-    _.set(res.locals, 'pageMeta.description', page.description)
-    page.mode = 'update'
-    page.isPublished = (page.isPublished === true || page.isPublished === 1) ? 'true' : 'false'
-    page.content = Buffer.from(page.content).toString('base64')
+    if (pageHistoryExist !== undefined) {
+      _.set(res.locals, 'pageMeta.title', `Edit ${pageHistoryExist.title}`)
+      _.set(res.locals, 'pageMeta.description', pageHistoryExist.description)
+      page.mode = 'update'
+      page.isPublished = (page.isPublished === true || page.isPublished === 1) ? 'true' : 'false'
+      page.content = Buffer.from(pageHistoryExist.newContent).toString('base64')
+    } else {
+      _.set(res.locals, 'pageMeta.title', `Edit ${page.title}`)
+      _.set(res.locals, 'pageMeta.description', page.description)
+      page.mode = 'update'
+      page.isPublished = (page.isPublished === true || page.isPublished === 1) ? 'true' : 'false'
+      page.content = Buffer.from(page.content).toString('base64')
+    }
   } else {
     // -> CREATE MODE
     if (!effectivePermissions.pages.write) {
@@ -229,7 +257,6 @@ router.get(['/e', '/e/*'], async (req, res, next) => {
       }
     }
   }
-
   res.render('editor', { page, injectCode, effectivePermissions })
 })
 
@@ -238,7 +265,6 @@ router.get(['/e', '/e/*'], async (req, res, next) => {
  */
 router.get(['/h', '/h/*'], async (req, res, next) => {
   const pageArgs = pageHelper.parsePath(req.path, { stripExt: true })
-
   if (WIKI.config.lang.namespacing && !pageArgs.explicitLocale) {
     return res.redirect(`/h/${pageArgs.locale}/${pageArgs.path}`)
   }
@@ -272,13 +298,58 @@ router.get(['/h', '/h/*'], async (req, res, next) => {
   if (page) {
     _.set(res.locals, 'pageMeta.title', page.title)
     _.set(res.locals, 'pageMeta.description', page.description)
-
     res.render('history', { page, effectivePermissions })
   } else {
     res.redirect(`/${pageArgs.path}`)
   }
 })
 
+/**
+ * History Review
+ */
+router.get(['/r', '/r/*'], async (req, res, next) => {
+  let fullPath = req.path.split('/')
+  fullPath.pop()
+  let reqPath = fullPath.join('/')
+  const pageArgs = pageHelper.parsePath(reqPath, { stripExt: true })
+  if (WIKI.config.lang.namespacing && !pageArgs.explicitLocale) {
+    return res.redirect(`/r/${pageArgs.locale}/${pageArgs.path}`)
+  }
+
+  req.i18n.changeLanguage(pageArgs.locale)
+
+  _.set(res, 'locals.siteConfig.lang', pageArgs.locale)
+  _.set(res, 'locals.siteConfig.rtl', req.i18n.dir() === 'rtl')
+
+  const page = await WIKI.models.pages.getPageFromDb({
+    path: pageArgs.path,
+    locale: pageArgs.locale,
+    userId: req.user.id,
+    isPrivate: false
+  })
+
+  if (!page) {
+    _.set(res.locals, 'pageMeta.title', 'Page Not Found')
+    return res.status(404).render('notfound', { action: 'history' })
+  }
+
+  pageArgs.tags = _.get(page, 'tags', [])
+
+  const effectivePermissions = WIKI.auth.getEffectivePermissions(req, pageArgs)
+
+  if (!effectivePermissions.history.read) {
+    _.set(res.locals, 'pageMeta.title', 'Unauthorized')
+    return res.render('unauthorized', { action: 'history' })
+  }
+
+  if (page) {
+    _.set(res.locals, 'pageMeta.title', page.title)
+    _.set(res.locals, 'pageMeta.description', page.description)
+    res.render('history', { page, effectivePermissions })
+  } else {
+    res.redirect(`/${pageArgs.path}`)
+  }
+})
 /**
  * Page ID redirection
  */
@@ -372,8 +443,7 @@ router.get(['/s', '/s/*'], async (req, res, next) => {
         page: {
           ...page,
           ...pageVersion
-        },
-        effectivePermissions
+        }
       })
     } else {
       _.set(res.locals, 'pageMeta.title', page.title)

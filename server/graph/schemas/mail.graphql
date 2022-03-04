@@ -27,6 +27,19 @@ type MailMutation {
     recipientEmail: String!
   ): DefaultResponse @auth(requires: ["manage:system"])
 
+  reviewEmail(
+    pageId: Int!
+    versionId: Int!
+    context: String!
+  ): DefaultResponse @auth(requires: ["write:pages", "manage:navigation", "manage:system"])
+
+  reviewedEmailbyAdmin(
+    pageId: Int!
+    versionId: Int!
+    isApproved: String!
+    context: String!
+  ): DefaultResponse @auth(requires: ["manage:navigation", "manage:system"])
+
   updateConfig(
     senderName: String!
     senderEmail: String!

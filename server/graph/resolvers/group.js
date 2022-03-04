@@ -34,17 +34,18 @@ module.exports = {
      * ASSIGN USER TO GROUP
      */
     async assignUser (obj, args, { req }) {
+      console.log('assignUser')
       // Check for guest user
       if (args.userId === 2) {
         throw new gql.GraphQLError('Cannot assign the Guest user to a group.')
       }
-
+      console.log('assignUser1')
       // Check for valid group
       const grp = await WIKI.models.groups.query().findById(args.groupId)
       if (!grp) {
         throw new gql.GraphQLError('Invalid Group ID')
       }
-
+      console.log('assignUser2')
       // Check assigned permissions for write:groups
       if (
         WIKI.auth.checkExclusiveAccess(req.user, ['write:groups'], ['manage:groups', 'manage:system']) &&
@@ -55,13 +56,13 @@ module.exports = {
       ) {
         throw new gql.GraphQLError('You are not authorized to assign a user to this elevated group.')
       }
-
+      console.log('assignUser3')
       // Check for valid user
       const usr = await WIKI.models.users.query().findById(args.userId)
       if (!usr) {
         throw new gql.GraphQLError('Invalid User ID')
       }
-
+      console.log('assignUser4')
       // Check for existing relation
       const relExist = await WIKI.models.knex('userGroups').where({
         userId: args.userId,
@@ -70,14 +71,14 @@ module.exports = {
       if (relExist) {
         throw new gql.GraphQLError('User is already assigned to group.')
       }
-
+      console.log('assignUser5')
       // Assign user to group
       await grp.$relatedQuery('users').relate(usr.id)
 
       // Revoke tokens for this user
       WIKI.auth.revokeUserTokens({ id: usr.id, kind: 'u' })
       WIKI.events.outbound.emit('addAuthRevoke', { id: usr.id, kind: 'u' })
-
+      console.log('assignUser6')
       return {
         responseResult: graphHelper.generateSuccess('User has been assigned to group.')
       }

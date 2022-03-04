@@ -42,6 +42,7 @@ module.exports = class Page extends Model {
         title: {type: 'string'},
         description: {type: 'string'},
         isPublished: {type: 'boolean'},
+        isSubmit: {type: 'boolean'},
         privateNS: {type: 'string'},
         publishStartDate: {type: 'string'},
         publishEndDate: {type: 'string'},
@@ -301,6 +302,7 @@ module.exports = class Page extends Model {
       hash: pageHelper.generateHash({ path: opts.path, locale: opts.locale, privateNS: opts.isPrivate ? 'TODO' : '' }),
       isPrivate: opts.isPrivate,
       isPublished: opts.isPublished,
+      isSubmit: opts.isSubmit,
       localeCode: opts.locale,
       path: opts.path,
       publishEndDate: opts.publishEndDate || '',
@@ -365,14 +367,32 @@ module.exports = class Page extends Model {
   static async updatePage(opts) {
     // -> Fetch original page
     const ogPage = await WIKI.models.pages.query().findById(opts.id)
+    let editorGroupId = await WIKI.models.groups.query().where('name', 'Editor').first()
+    ogPage.newContent = opts.content
+    if (opts.hasOwnProperty('isPublished')) {
+      ogPage.isPublished = opts.isPublished
+    }
+    if (opts.hasOwnProperty('isSubmit')) {
+      ogPage.isSubmit = opts.isSubmit
+    }
+    if (opts.user.groups.includes(1)) {
+      ogPage.isApproved = true
+      ogPage.isReviewed = true
+    } else if (opts.user.groups.includes(editorGroupId.id)) {
+      ogPage.isApproved = true
+      ogPage.isReviewed = true
+    } else {
+      ogPage.isApproved = false
+      ogPage.isReviewed = false
+    }
     if (!ogPage) {
       throw new Error('Invalid Page Id')
     }
 
     // -> Check for page access
     if (!WIKI.auth.checkAccess(opts.user, ['write:pages'], {
-      locale: ogPage.localeCode,
-      path: ogPage.path
+      locale: opts.locale,
+      path: opts.path
     })) {
       throw new WIKI.Error.PageUpdateForbidden()
     }
@@ -382,13 +402,42 @@ module.exports = class Page extends Model {
       throw new WIKI.Error.PageEmptyContent()
     }
 
+    // if (ogPage.isPublished === false) {
+    //   ogPage.isApproved = true
+    //   ogPage.isReviewed = true
+    // }
+
+    if (ogPage.isPublished === true) {
+      ogPage.isSubmit = true
+      // ogPage.isApproved = true
+      // ogPage.isReviewed = true
+    }
+
+    if (opts.hasOwnProperty('isPublished') && opts.isPublished === false) {
+      ogPage.isApproved = true
+      ogPage.isReviewed = true
+    } else if (ogPage.isPublished === false) {
+      ogPage.isApproved = true
+      ogPage.isReviewed = true
+    } else {
+
+    }
+
     // -> Create version snapshot
     await WIKI.models.pageHistory.addVersion({
       ...ogPage,
-      isPublished: ogPage.isPublished === true || ogPage.isPublished === 1,
+      authorId: opts.user.id,
+      isPublished: ogPage.isPublished,
       action: opts.action ? opts.action : 'updated',
       versionDate: ogPage.updatedAt
     })
+
+    // await WIKI.models.pageHistory.editVersion({
+    //   isReviewed: true,
+    //   isApproved: true,
+    //   versionId: 87,
+    //   versionDate: ogPage.updatedAt
+    // })
 
     // -> Format Extra Properties
     if (!_.isPlainObject(ogPage.extra)) {
@@ -416,23 +465,39 @@ module.exports = class Page extends Model {
     })) {
       scriptJs = opts.scriptJs || ''
     }
+    if (opts.user.groups.includes(1) || opts.user.groups.includes(editorGroupId.id) || ogPage.isPublished === false) {
+      // -> Update page
+      await WIKI.models.pages.query().patch({
+        authorId: opts.user.id,
+        content: opts.content,
+        description: opts.description,
+        isPublished: ogPage.isPublished,
+        isSubmit: ogPage.isSubmit,
+        publishEndDate: opts.publishEndDate || '',
+        publishStartDate: opts.publishStartDate || '',
+        title: opts.title,
+        extra: JSON.stringify({
+          ...ogPage.extra,
+          js: scriptJs,
+          css: scriptCss
+        })
+      }).where('id', ogPage.id)
+    }
 
-    // -> Update page
-    await WIKI.models.pages.query().patch({
-      authorId: opts.user.id,
-      content: opts.content,
-      description: opts.description,
-      isPublished: opts.isPublished === true || opts.isPublished === 1,
-      publishEndDate: opts.publishEndDate || '',
-      publishStartDate: opts.publishStartDate || '',
-      title: opts.title,
-      extra: JSON.stringify({
-        ...ogPage.extra,
-        js: scriptJs,
-        css: scriptCss
-      })
-    }).where('id', ogPage.id)
-    let page = await WIKI.models.pages.getPageFromDb(ogPage.id)
+    let page = _.cloneDeep(await WIKI.models.pages.getPageFromDb(ogPage.id))
+    page.authorId = opts.user.id
+    page.content = opts.content
+    page.description = opts.description
+    page.isPublished = ogPage.isPublished
+    page.isSubmit = ogPage.isSubmit
+    page.publishEndDate = opts.publishEndDate || ''
+    page.publishStartDate = opts.publishStartDate || ''
+    page.title = opts.title
+    page.extra = JSON.stringify({
+      ...ogPage.extra,
+      js: scriptJs,
+      css: scriptCss
+    })
 
     // -> Save Tags
     await WIKI.models.tags.associateTags({ tags: opts.tags, page })
@@ -456,14 +521,6 @@ module.exports = class Page extends Model {
 
     // -> Perform move?
     if ((opts.locale && opts.locale !== page.localeCode) || (opts.path && opts.path !== page.path)) {
-      // -> Check target path access
-      if (!WIKI.auth.checkAccess(opts.user, ['write:pages'], {
-        locale: opts.locale,
-        path: opts.path
-      })) {
-        throw new WIKI.Error.PageMoveForbidden()
-      }
-
       await WIKI.models.pages.movePage({
         id: page.id,
         destinationLocale: opts.locale,
@@ -476,11 +533,47 @@ module.exports = class Page extends Model {
         pageId: page.id
       }).update('title', page.title)
     }
+    // -> Rebuild page tree
+    await WIKI.models.pages.rebuildTree()
 
     // -> Get latest updatedAt
     page.updatedAt = await WIKI.models.pages.query().findById(page.id).select('updatedAt').then(r => r.updatedAt)
-
     return page
+  }
+
+  /**
+   * Update an Existing Page
+   *
+   * @param {Object} opts Page Properties
+   * @returns {Promise} Promise of the Page Model Instance
+   */
+  static async updateHistory(opts) {
+    // -> Fetch original page
+    let status = await WIKI.models.pageHistory.editVersion({
+      isReviewed: true,
+      isApproved: opts.isApproved,
+      versionId: opts.id,
+      versionDate: new Date().toISOString()
+    })
+    return status
+  }
+
+  /**
+   * Update an Existing Page
+   *
+   * @param {Object} opts Page Properties
+   * @returns {Promise} Promise of the Page Model Instance
+   */
+  static async updateHistoryByReviewer(opts) {
+    // -> Fetch original page
+    let status = await WIKI.models.pageHistory.updateHistoryByReviewer({
+      pageId: opts.pageId,
+      authorId: opts.authorId,
+      content: opts.content,
+      newContent: opts.newContent,
+      versionDate: new Date().toISOString()
+    })
+    return status
   }
 
   /**
@@ -658,15 +751,7 @@ module.exports = class Page extends Model {
    * @returns {Promise} Promise with no value
    */
   static async movePage(opts) {
-    let page
-    if (_.has(opts, 'id')) {
-      page = await WIKI.models.pages.query().findById(opts.id)
-    } else {
-      page = await WIKI.models.pages.query().findOne({
-        path: opts.path,
-        localeCode: opts.locale
-      })
-    }
+    const page = await WIKI.models.pages.query().findById(opts.id)
     if (!page) {
       throw new WIKI.Error.PageNotFound()
     }
@@ -720,11 +805,9 @@ module.exports = class Page extends Model {
     const destinationHash = pageHelper.generateHash({ path: opts.destinationPath, locale: opts.destinationLocale, privateNS: opts.isPrivate ? 'TODO' : '' })
 
     // -> Move page
-    const destinationTitle = (page.title === page.path ? opts.destinationPath : page.title)
     await WIKI.models.pages.query().patch({
       path: opts.destinationPath,
       localeCode: opts.destinationLocale,
-      title: destinationTitle,
       hash: destinationHash
     }).findById(page.id)
     await WIKI.models.pages.deletePageFromCache(page.hash)
@@ -793,7 +876,7 @@ module.exports = class Page extends Model {
       })
     }
     if (!page) {
-      throw new WIKI.Error.PageNotFound()
+      throw new Error('Invalid Page Id')
     }
 
     // -> Check for page access
@@ -805,23 +888,26 @@ module.exports = class Page extends Model {
     }
 
     // -> Create version snapshot
-    await WIKI.models.pageHistory.addVersion({
-      ...page,
-      action: 'deleted',
-      versionDate: page.updatedAt
-    })
+    // await WIKI.models.pageHistory.addVersion({
+    //   ...page,
+    //   action: 'deleted',
+    //   versionDate: page.updatedAt
+    // })
 
     // -> Delete page
     await WIKI.models.pages.query().delete().where('id', page.id)
     await WIKI.models.pages.deletePageFromCache(page.hash)
     WIKI.events.outbound.emit('deletePageFromCache', page.hash)
 
+    // -> Change page status isPageExist to false from history
+    // await WIKI.models.knex.table('pageHistory').where({
+    //   path: page.path
+    // }).update('isPageExist', false)
+    // await WIKI.models.pageHistory.query().update().where('path', page.path)
     // -> Rebuild page tree
     await WIKI.models.pages.rebuildTree()
-
     // -> Delete from Search Index
     await WIKI.data.searchEngine.deleted(page)
-
     // -> Delete from Storage
     if (!opts.skipStorage) {
       await WIKI.models.storage.pageEvent({
@@ -829,7 +915,6 @@ module.exports = class Page extends Model {
         page
       })
     }
-
     // -> Reconnect Links
     await WIKI.models.pages.reconnectLinks({
       locale: page.localeCode,
@@ -989,6 +1074,7 @@ module.exports = class Page extends Model {
           'pages.description',
           'pages.isPrivate',
           'pages.isPublished',
+          'pages.isSubmit',
           'pages.privateNS',
           'pages.publishStartDate',
           'pages.publishEndDate',
@@ -1069,6 +1155,7 @@ module.exports = class Page extends Model {
       },
       isPrivate: page.isPrivate === 1 || page.isPrivate === true,
       isPublished: page.isPublished === 1 || page.isPublished === true,
+      isSubmit: page.isSubmit === 1 || page.isSubmit === true,
       publishEndDate: page.publishEndDate,
       publishStartDate: page.publishStartDate,
       render: page.render,
